@@ -1,4 +1,4 @@
-# gaia - custom reva binary builder
+# gaia | custom reva binary builder
 
 <img src="assets/logo.png" width="200" alt="gopher with a wrench in his hand">
 
