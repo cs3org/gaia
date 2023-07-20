@@ -50,6 +50,7 @@ var buildCmd = &cobra.Command{
 			Plugins:     plugins,
 			Replacement: replacement,
 			Debug:       buildFlags.Debug,
+			Log:         log,
 		}
 
 		err := builder.Build(ctx, buildFlags.Output)

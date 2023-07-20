@@ -8,6 +8,7 @@ import (
 	"text/template"
 
 	"github.com/cs3org/gaia/internal/utils"
+	"github.com/rs/zerolog"
 )
 
 const revaRepository = "github.com/cs3org/reva"
@@ -25,11 +26,20 @@ type Builder struct {
 	Replacement []Replace
 	TempFolder  string
 	Debug       bool
+	Log         *zerolog.Logger
 }
 
 type Plugin struct {
 	RepositoryPath string
 	Version        string
+}
+
+func (p Plugin) String() string {
+	s := p.RepositoryPath
+	if p.Version != "" {
+		s += "@" + p.Version
+	}
+	return s
 }
 
 type Replace struct {
@@ -48,9 +58,21 @@ func (r Replace) Format() string {
 	return s
 }
 
+func (r Replace) String() string {
+	s := r.From + " => " + r.To
+	if r.ToVersion != "" {
+		s += "@" + r.ToVersion
+	}
+	return s
+}
+
 func (b *Builder) Build(ctx context.Context, output string) error {
 	if output == "" {
 		return errors.New("output file name cannot be empty")
+	}
+	if b.Log == nil {
+		log := zerolog.Nop()
+		b.Log = &log
 	}
 
 	var err error
@@ -73,6 +95,8 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 	if err != nil {
 		return err
 	}
+	defer w.Close()
+
 	w.setEnvKV("GOOS", b.Platform.OS)
 	w.setEnvKV("GOARCH", b.Platform.Arch)
 
@@ -91,6 +115,7 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 
 	// TODO: verify all the versions
 	for _, plugin := range b.Plugins {
+		b.Log.Info().Msgf("adding plugin %s", plugin)
 		if err := w.runGoGetCommand(ctx, plugin.RepositoryPath, plugin.Version); err != nil {
 			return err
 		}
@@ -119,6 +144,7 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 			"-ldflags", "-w -s") // trim debug symbols
 	}
 	// TODO: revad requires to set some compile time variables for setting the version
+	b.Log.Info().Msg("building revad binary")
 	if err := w.runGoBuildCommand(ctx, "main.go", output, buildArgs...); err != nil {
 		return err
 	}

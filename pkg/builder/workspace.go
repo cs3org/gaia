@@ -3,18 +3,19 @@ package builder
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/cs3org/gaia/internal/utils"
+	"github.com/rs/zerolog"
 )
 
 type workspace struct {
 	folder string   // temp directory where all the ops are executed
 	goenv  []string // environment used for go commands
+	log    *zerolog.Logger
 }
 
 func (b *Builder) newWorkspace() (*workspace, error) {
@@ -22,9 +23,10 @@ func (b *Builder) newWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating temp directory: %w", err)
 	}
-	log.Println("[INFO] Using temp folder", tmpFolder, "as workspace")
+	b.Log.Debug().Msgf("using temp folder %s as workspace", tmpFolder)
 	w := &workspace{
 		folder: tmpFolder,
+		log:    b.Log,
 	}
 	return w, nil
 }
@@ -62,13 +64,13 @@ func getTempDirectory(folder string) (string, error) {
 func (w workspace) newCommand(ctx context.Context, cmd string, args ...string) *exec.Cmd {
 	c := exec.CommandContext(ctx, cmd, args...)
 	c.Dir = w.folder
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
+	// TODO: capture stderr for errors
 	return c
 }
 
 func (w workspace) runGoCommand(ctx context.Context, args ...string) error {
 	cmd := w.newGoCommand(ctx, args...)
+	w.log.Debug().Str("cmd", cmd.String()).Strs("env", cmd.Env).Send()
 	return cmd.Run()
 }
 
@@ -90,6 +92,7 @@ func (w workspace) runGoBuildCommand(ctx context.Context, src, output string, ar
 func (w workspace) runGoModReplaceCommand(ctx context.Context, replacement []Replace) error {
 	args := make([]string, 0, len(replacement))
 	for _, r := range replacement {
+		w.log.Info().Msgf("replace %s", r)
 		args = append(args, "-replace="+r.Format())
 	}
 	return w.runGoCommand(ctx, args...)
@@ -101,7 +104,6 @@ func (w workspace) newGoCommand(ctx context.Context, args ...string) *exec.Cmd {
 		w.setEnv(env)
 	}
 	c.Env = w.goenv
-	log.Printf("[INFO] cmd=%s env=%v\n", c.String(), c.Env)
 	return c
 }
 

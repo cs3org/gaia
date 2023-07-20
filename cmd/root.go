@@ -21,8 +21,15 @@ package cmd
 import (
 	"os"
 
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )
+
+var log *zerolog.Logger
+
+var globalFlags = struct {
+	Verbose int
+}{}
 
 var rootCmd = &cobra.Command{
 	Use:   "gaia",
@@ -35,4 +42,26 @@ func Execute() {
 	if err != nil {
 		os.Exit(1)
 	}
+}
+
+func init() {
+	rootCmd.PersistentFlags().CountVarP(&globalFlags.Verbose, "verbose", "v", "verbosity")
+	cobra.OnInitialize(func() {
+		initLogger(globalFlags.Verbose)
+	})
+}
+
+func initLogger(verbosity int) {
+	level := zerolog.InfoLevel
+	if verbosity > 0 {
+		level = zerolog.DebugLevel
+	}
+	out := zerolog.ConsoleWriter{Out: os.Stderr}
+	l := zerolog.New(os.Stderr).
+		With().
+		Timestamp().
+		Logger().
+		Level(level).
+		Output(out)
+	log = &l
 }
