@@ -75,6 +75,8 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		b.Log = &log
 	}
 
+	b.Log.Info().Msgf("building reva using version %s", b.RevaVersion)
+
 	var err error
 	output, err = filepath.Abs(output)
 	if err != nil {

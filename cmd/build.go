@@ -54,7 +54,9 @@ var buildCmd = &cobra.Command{
 		}
 
 		err := builder.Build(ctx, buildFlags.Output)
-		cobra.CheckErr(err)
+		if err != nil {
+			log.Fatal().Err(err).Send()
+		}
 	},
 }
 

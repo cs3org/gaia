@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -61,17 +62,23 @@ func getTempDirectory(folder string) (string, error) {
 	return os.MkdirTemp("", "gaia-*")
 }
 
-func (w workspace) newCommand(ctx context.Context, cmd string, args ...string) *exec.Cmd {
+func (w workspace) newCommand(ctx context.Context, cmd string, stderr io.Writer, args ...string) *exec.Cmd {
 	c := exec.CommandContext(ctx, cmd, args...)
 	c.Dir = w.folder
-	// TODO: capture stderr for errors
+	if stderr != nil {
+		c.Stderr = stderr
+	}
 	return c
 }
 
 func (w workspace) runGoCommand(ctx context.Context, args ...string) error {
-	cmd := w.newGoCommand(ctx, args...)
+	var buf strings.Builder
+	cmd := w.newGoCommand(ctx, &buf, args...)
 	w.log.Debug().Str("cmd", cmd.String()).Strs("env", cmd.Env).Send()
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(buf.String()))
+	}
+	return nil
 }
 
 func (w workspace) runGoGetCommand(ctx context.Context, repositoryPath, version string) error {
@@ -98,8 +105,8 @@ func (w workspace) runGoModReplaceCommand(ctx context.Context, replacement []Rep
 	return w.runGoCommand(ctx, args...)
 }
 
-func (w workspace) newGoCommand(ctx context.Context, args ...string) *exec.Cmd {
-	c := w.newCommand(ctx, utils.Go(), args...)
+func (w workspace) newGoCommand(ctx context.Context, stderr io.Writer, args ...string) *exec.Cmd {
+	c := w.newCommand(ctx, utils.Go(), stderr, args...)
 	for _, env := range utils.FromGoEnv("GOPATH", "GOMODCACHE", "GOCACHE") {
 		w.setEnv(env)
 	}
