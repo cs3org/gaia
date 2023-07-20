@@ -28,6 +28,7 @@ import (
 var buildFlags = struct {
 	With   []string
 	Output string
+	Debug  bool
 }{}
 
 // buildCmd represents the build command
@@ -48,6 +49,7 @@ var buildCmd = &cobra.Command{
 			RevaVersion: version,
 			Plugins:     plugins,
 			Replacement: replacement,
+			Debug:       buildFlags.Debug,
 		}
 
 		err := builder.Build(ctx, buildFlags.Output)
@@ -96,4 +98,5 @@ func init() {
 
 	buildCmd.Flags().StringSliceVar(&buildFlags.With, "with", nil, "plugins to include in the build")
 	buildCmd.Flags().StringVarP(&buildFlags.Output, "output", "o", "./revad", "output file")
+	buildCmd.Flags().BoolVarP(&buildFlags.Debug, "debug", "d", false, "compile with debug symbols")
 }

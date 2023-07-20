@@ -113,7 +113,7 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 
 	buildArgs := []string{}
 	if b.Debug {
-		buildArgs = append(buildArgs, `-gcflags=all="-N -l"`)
+		buildArgs = append(buildArgs, "-gcflags", "all=-N -l")
 	} else {
 		buildArgs = append(buildArgs, "-trimpath",
 			"-ldflags", "-w -s") // trim debug symbols
