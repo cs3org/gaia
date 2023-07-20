@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"text/template"
 
 	"github.com/cs3org/gaia/internal/utils"
@@ -52,6 +53,12 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		return errors.New("output file name cannot be empty")
 	}
 
+	var err error
+	output, err = filepath.Abs(output)
+	if err != nil {
+		return err
+	}
+
 	if b.Platform.Arch == "" {
 		b.Platform.Arch = utils.KeyFromGoEnv("GOARCH")
 	}
@@ -82,7 +89,6 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		return err
 	}
 
-	// TODO: add replacement for pkgs
 	// TODO: verify all the versions
 	for _, plugin := range b.Plugins {
 		if err := w.runGoGetCommand(ctx, plugin.RepositoryPath, plugin.Version); err != nil {
@@ -109,7 +115,8 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 	if b.Debug {
 		buildArgs = append(buildArgs, `-gcflags=all="-N -l"`)
 	} else {
-		buildArgs = append(buildArgs, "-trimpath")
+		buildArgs = append(buildArgs, "-trimpath",
+			"-ldflags", "-w -s") // trim debug symbols
 	}
 	// TODO: revad requires to set some compile time variables for setting the version
 	if err := w.runGoBuildCommand(ctx, "main.go", output, buildArgs...); err != nil {
