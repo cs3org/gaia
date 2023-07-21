@@ -6,6 +6,7 @@ require (
 	github.com/cs3org/gaia v0.0.0-20230721064608-781e18d99071
 	github.com/cs3org/reva v1.24.1-0.20230720105710-7c8eb90505b4
 	github.com/go-chi/chi/v5 v5.0.10
+	gorm.io/gorm v1.25.2
 )
 
 require (
@@ -13,6 +14,8 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.14.1 // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
