@@ -115,7 +115,7 @@ func (w workspace) runGoBuildCommand(ctx context.Context, src, output string, ar
 }
 
 func (w workspace) runGoModReplaceCommand(ctx context.Context, replacement []Replace) error {
-	args := make([]string, 0, len(replacement))
+	args := []string{"mod", "edit"}
 	for _, r := range replacement {
 		w.log.Info().Msgf("replace %s", r)
 		args = append(args, "-replace="+r.Format())
