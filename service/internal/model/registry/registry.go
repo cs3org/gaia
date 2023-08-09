@@ -1,4 +1,22 @@
-package model
+// Copyright 2018-2023 CERN
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// In applying this license, CERN does not waive the privileges and immunities
+// granted to it by virtue of its status as an Intergovernmental Organization
+// or submit itself to any jurisdiction.
+
+package registry
 
 import (
 	"context"
@@ -35,6 +53,40 @@ type Registry struct {
 	repo crud.Repository
 }
 
+const manifest = "reva.json"
+
+type Plugin struct {
+	ID          string
+	Description string
+}
+
+type Manifest struct {
+	Author   string
+	Licence  string
+	Module   string
+	Homepage string
+	Doc      string
+	Plugins  []Plugin
+}
+
+func (m *Manifest) Valid() bool {
+	if m.Author == "" {
+		return false
+	}
+	if m.Licence == "" {
+		return false
+	}
+	if m.Module == "" {
+		return false
+	}
+
+	// TODO: check doc
+	if len(m.Plugins) == 0 {
+		return false
+	}
+	return true
+}
+
 // New creates an instance of a Registry.
 func New(repository crud.Repository) *Registry {
 	return &Registry{repo: repository}
@@ -45,15 +97,41 @@ func New(repository crud.Repository) *Registry {
 // It checks that the module contains the reva.json file, with all the
 // required information, and eventually adds the package info in the registry.
 func (r *Registry) RegisterPackage(ctx context.Context, module string) error {
-	// 1. get reva.json (can we use go get <module>?)
-	// 2. parse it and get relevant information
-	// 3. store in the db
-	return errors.New("not yet implemented")
+	var w workspace
+	if err := w.init(); err != nil {
+		return err
+	}
+	defer w.close()
+
+	path, err := w.downloadModule(ctx, module)
+	if err != nil {
+		return err
+	}
+
+	manifest, err := w.readManifest(path)
+	if err != nil {
+		return err
+	}
+
+	if !manifest.Valid() {
+		return errors.New("manifest is not valid")
+	}
+
+	plugins := make([]model.Plugin, 0, len(manifest.Plugins))
+	for _, p := range manifest.Plugins {
+		plugins = append(plugins, model.Plugin{ID: p.ID, Description: p.Description})
+	}
+	return r.repo.StorePackage(ctx, &model.Package{
+		Author:   manifest.Author,
+		Module:   module,
+		Homepage: manifest.Homepage,
+		Plugins:  plugins,
+	})
 }
 
 // ListPackages returns the list of all the packages registered in the registry.
 func (r *Registry) ListPackages(ctx context.Context) ([]*model.Package, error) {
-	return nil, errors.New("not yet implemented")
+	return r.repo.ListPackages(ctx)
 }
 
 // UpdatePackages is run internally to update the info of all the packages.
