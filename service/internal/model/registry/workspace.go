@@ -29,17 +29,20 @@ import (
 )
 
 type workspace struct {
-	env  []string
-	root string
+	gopath string
+	tmp    string
 }
 
 func (w *workspace) init() error {
 	var err error
-	w.root, err = os.MkdirTemp("", "gaia-*")
+	w.gopath, err = os.MkdirTemp("", "gaia-*")
 	if err != nil {
 		return err
 	}
-	w.env = []string{"GOPATH=" + w.root}
+	w.tmp, err = os.MkdirTemp("", "gaia-*")
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -47,10 +50,10 @@ func (w *workspace) run(ctx context.Context, name string, args ...string) (strin
 	var stdout, stderr strings.Builder
 
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = w.root
+	cmd.Dir = w.tmp
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	cmd.Env = w.env
+	cmd.Env = []string{"GOPATH=" + w.gopath}
 
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
@@ -95,7 +98,10 @@ func (w *workspace) readManifest(path string) (*Manifest, error) {
 }
 
 func (w *workspace) close() {
-	if w.root != "" {
-		os.RemoveAll(w.root)
+	if w.gopath != "" {
+		os.RemoveAll(w.gopath)
+	}
+	if w.tmp != "" {
+		os.RemoveAll(w.tmp)
 	}
 }

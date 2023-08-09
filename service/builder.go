@@ -20,10 +20,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/cs3org/gaia/service/internal/crud"
+	model "github.com/cs3org/gaia/service/internal/model/registry"
 	"github.com/cs3org/reva"
 	"github.com/cs3org/reva/pkg/rhttp/global"
 	"github.com/cs3org/reva/pkg/utils/cfg"
@@ -37,12 +40,16 @@ func init() {
 type Builder struct {
 	router *chi.Mux
 	c      *config
+	reg    *model.Registry
 }
 
 type config struct {
 	BuildFolder      string        `mapstructure:"build_folder"`
 	BinaryTempFolder string        `mapstructure:"binary_temp_folder"`
 	BuildTimeout     time.Duration `mapstructure:"build_timeout"`
+	DBFile           string        `mapstructure:"db_file"`
+
+	tmpFile bool
 }
 
 func (c *config) ApplyDefaults() {
@@ -52,6 +59,15 @@ func (c *config) ApplyDefaults() {
 
 	if c.BuildTimeout == 0 {
 		c.BuildTimeout = 120 * time.Second
+	}
+
+	if c.DBFile == "" {
+		tmp, err := os.CreateTemp("", "*")
+		if err != nil {
+			panic(err)
+		}
+		c.DBFile = tmp.Name()
+		c.tmpFile = true
 	}
 }
 
@@ -67,9 +83,16 @@ func New(ctx context.Context, m map[string]any) (global.Service, error) {
 	if err := cfg.Decode(m, &c); err != nil {
 		return nil, err
 	}
+
+	db, err := crud.NewSqlite(c.DBFile)
+	if err != nil {
+		return nil, err
+	}
+	registry := model.New(db)
 	b := Builder{
 		router: chi.NewRouter(),
 		c:      &c,
+		reg:    registry,
 	}
 	b.initRouter()
 	return &b, nil
@@ -81,19 +104,79 @@ func (s *Builder) initRouter() {
 	s.router.Post("/plugins", s.registerPlugin)
 }
 
+func writeError(err error, code int, w http.ResponseWriter) {
+	w.WriteHeader(code)
+	w.Write([]byte(err.Error()))
+}
+
+type plugin struct {
+	ID          string `json:"id"`
+	Description string `json:"description"`
+}
+
+type packageRes struct {
+	Module   string   `json:"module"`
+	Download int      `json:"download"`
+	Listed   bool     `json:"listed"`
+	Plugins  []plugin `json:"plugins"`
+}
+
 func (s *Builder) listPlugins(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	list, err := s.reg.ListPackages(r.Context())
+	if err != nil {
+		writeError(err, http.StatusInternalServerError, w)
+		return
+	}
+
+	res := make([]packageRes, 0, len(list))
+	for _, p := range list {
+		plugins := make([]plugin, 0, len(p.Plugins))
+		for _, plug := range p.Plugins {
+			plugins = append(plugins, plugin{
+				ID:          plug.ID,
+				Description: plug.Description,
+			})
+		}
+		res = append(res, packageRes{
+			Module:   p.Module,
+			Download: p.Downloads.Counter,
+			Listed:   true,
+			Plugins:  plugins,
+		})
+	}
+
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		writeError(err, http.StatusInternalServerError, w)
+		return
+	}
+}
+
+type registerPluginRequest struct {
+	Module string `json:"module"`
 }
 
 func (s *Builder) registerPlugin(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	var req registerPluginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(err, http.StatusBadRequest, w)
+		return
+	}
+	if err := s.reg.RegisterPackage(r.Context(), req.Module); err != nil {
+		writeError(err, http.StatusBadRequest, w)
+		return
+	}
 }
 
 func (s *Builder) Handler() http.Handler { return s.router }
 
 func (s *Builder) Prefix() string { return "gaia" }
 
-func (s *Builder) Close() error { return nil }
+func (s *Builder) Close() error {
+	if s.c.tmpFile {
+		return os.RemoveAll(s.c.DBFile)
+	}
+	return nil
+}
 
 func (s *Builder) Unprotected() []string { return []string{"/"} }
 
