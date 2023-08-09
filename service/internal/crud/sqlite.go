@@ -22,12 +22,38 @@ import (
 	"context"
 
 	"github.com/cs3org/gaia/service/internal/model"
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
 )
 
-// Repository is an interface for a repository
-// storing packages.
-type Repository interface {
-	StorePackage(ctx context.Context, pkg *model.Package) error
-	ListPackages(ctx context.Context) ([]*model.Package, error)
-	IncrementDownloadCounter(ctx context.Context, module string) error
+type drv struct {
+	db *gorm.DB
+}
+
+func NewSqlite(file string) (Repository, error) {
+	db, err := gorm.Open(sqlite.Open(file), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+
+	db.AutoMigrate(&model.Package{}, &model.Download{}, &model.Plugin{})
+	return &drv{db: db}, nil
+}
+
+func (d *drv) StorePackage(ctx context.Context, pkg *model.Package) error {
+	return d.db.Create(pkg).Error
+}
+
+func (d *drv) ListPackages(ctx context.Context) ([]*model.Package, error) {
+	var pkgs []*model.Package
+	err := d.db.Model(&model.Package{}).
+		Preload("Downloads").
+		Preload("Plugins").
+		Find(&pkgs).Error
+	return pkgs, err
+}
+
+func (d *drv) IncrementDownloadCounter(ctx context.Context, module string) error {
+	return d.db.Model(&model.Download{PackageModule: module}).
+		UpdateColumn("counter", gorm.Expr("counter + ?", 1)).Error
 }

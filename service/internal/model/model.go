@@ -49,7 +49,7 @@ type Download struct {
 // and a description, explaining the purpose
 // of the plugin.
 type Plugin struct {
-	PackageID   int
-	ID          string
-	Description string
+	PackageModule string `gorm:"primaryKey,foreignKey:Module"`
+	ID            string `gorm:"primaryKey"`
+	Description   string
 }
