@@ -37,8 +37,7 @@ var (
 )
 
 var globalFlags = struct {
-	Verbose int
-	Config  string
+	Config string
 }{}
 
 var rootCmd = &cobra.Command{
@@ -46,6 +45,7 @@ var rootCmd = &cobra.Command{
 	Short: "Expose gaia as an HTTP service.",
 	Long:  "An HTTP service to make it easy to create custom build of reva.",
 	Run: func(cmd *cobra.Command, args []string) {
+		config.Gaia.Log = log
 		b, err := service.New(&config.Gaia)
 		if err != nil {
 			log.Fatal().Err(err).Send()
@@ -87,28 +87,28 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().CountVarP(&globalFlags.Verbose, "verbose", "v", "verbosity")
 	rootCmd.PersistentFlags().StringVarP(&globalFlags.Config, "config", "c", "/etc/gaia/config.toml", "config path")
 	cobra.OnInitialize(func() {
-		initLogger(globalFlags.Verbose)
 		initConfig(globalFlags.Config)
+		initLogger(&config.Log)
 	})
 
 	err := viper.BindPFlags(rootCmd.Flags())
 	cobra.CheckErr(err)
 }
 
-func initLogger(verbosity int) {
-	level := zerolog.InfoLevel
-	if verbosity > 0 {
-		level = zerolog.DebugLevel
-	}
-	out := zerolog.ConsoleWriter{Out: os.Stderr}
-	l := zerolog.New(os.Stderr).
-		With().
-		Timestamp().
-		Logger().
-		Level(level).
-		Output(out)
-	log = &l
-}
+// func initLogger(config *LogConfig) {
+// 	level, err := zerolog.ParseLevel(config.Level)
+// 	if err != nil {
+// 		level = zerolog.InfoLevel
+// 	}
+
+// 	out := zerolog.ConsoleWriter{Out: os.Stderr}
+// 	l := zerolog.New(os.Stderr).
+// 		With().
+// 		Timestamp().
+// 		Logger().
+// 		Level(level).
+// 		Output(out)
+// 	log = &l
+// }

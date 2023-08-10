@@ -30,8 +30,9 @@ type HTTPConfig struct {
 }
 
 type LogConfig struct {
-	Level string `mapstructure:"level"`
-	File  string `mapstructure:"file"`
+	Level         string `mapstructure:"level"`
+	Output        string `mapstructure:"output"`
+	DisableStdout bool   `mapstructure:"disable_stdout"`
 }
 
 type Config struct {
