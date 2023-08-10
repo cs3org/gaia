@@ -19,7 +19,10 @@
 package service
 
 import (
+	"embed"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"net/http"
 	"os"
 	"time"
@@ -30,10 +33,14 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+//go:embed static/*
+var static embed.FS
+
 type Builder struct {
-	router http.Handler
-	c      *Config
-	reg    *model.Registry
+	router      http.Handler
+	c           *Config
+	reg         *model.Registry
+	staticFiles fs.FS
 }
 
 type Config struct {
@@ -76,10 +83,16 @@ func New(c *Config) (*Builder, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	registry := model.New(db)
+	staticFiles, err := fs.Sub(static, "static")
+	if err != nil {
+		return nil, errors.New("error opening static files")
+	}
 	b := Builder{
-		c:   c,
-		reg: registry,
+		c:           c,
+		staticFiles: staticFiles,
+		reg:         registry,
 	}
 	b.initRouter()
 	return &b, nil
@@ -112,6 +125,8 @@ func (s *Builder) initRouter() {
 			return
 		}
 	})
+
+	mux.HandleFunc("/", s.serveStatic)
 
 	s.router = RecoverFromPanicMiddleware(s.c.Log, RequestLoggerMiddleware(s.c.Log, mux))
 }
@@ -188,6 +203,11 @@ func (s *Builder) registerPlugin(w http.ResponseWriter, r *http.Request) {
 		writeError(err, http.StatusBadRequest, w)
 		return
 	}
+}
+
+func (s *Builder) serveStatic(w http.ResponseWriter, r *http.Request) {
+	fs := http.FileServer(http.FS(s.staticFiles))
+	fs.ServeHTTP(w, r)
 }
 
 func (s *Builder) Handler() http.Handler { return s.router }
