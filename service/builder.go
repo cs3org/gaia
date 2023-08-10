@@ -146,10 +146,10 @@ type plugin struct {
 }
 
 type packageRes struct {
-	Module   string   `json:"module"`
-	Download int      `json:"download"`
-	Listed   bool     `json:"listed"`
-	Plugins  []plugin `json:"plugins"`
+	Module    string   `json:"module"`
+	Downloads int      `json:"downloads"`
+	Listed    bool     `json:"listed"`
+	Plugins   []plugin `json:"plugins"`
 }
 
 func (s *Builder) listPlugins(w http.ResponseWriter, r *http.Request) {
@@ -169,10 +169,10 @@ func (s *Builder) listPlugins(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		res = append(res, packageRes{
-			Module:   p.Module,
-			Download: p.Downloads.Counter,
-			Listed:   true,
-			Plugins:  plugins,
+			Module:    p.Module,
+			Downloads: p.Downloads.Counter,
+			Listed:    true,
+			Plugins:   plugins,
 		})
 	}
 

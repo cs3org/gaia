@@ -60,6 +60,6 @@ func (d *drv) ListPackages(ctx context.Context) ([]*model.Package, error) {
 
 func (d *drv) IncrementDownloadCounter(ctx context.Context, module string) error {
 	return d.db.Model(&model.Download{}).
-		Where("module = ?", module).
+		Where("package_module = ?", module).
 		UpdateColumn("counter", gorm.Expr("counter + ?", 1)).Error
 }
