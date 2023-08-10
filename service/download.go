@@ -91,6 +91,13 @@ func (s *Builder) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// update download counter for the chosen plugins
+	for _, p := range plugins {
+		if err := s.reg.IncrementDownloadCounter(ctx, p.RepositoryPath); err != nil {
+			log.Error().Err(err).Msgf("error updating download counter for module %s", p.RepositoryPath)
+		}
+	}
+
 	sendBinary(ctx, w, binaryRevadName(req.OS, req.Arch, req.RevaVersion), output.Name())
 }
 

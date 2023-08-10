@@ -134,6 +134,11 @@ func (r *Registry) ListPackages(ctx context.Context) ([]*model.Package, error) {
 	return r.repo.ListPackages(ctx)
 }
 
+// IncrementDownloadCounter increments the download counter for the given module.
+func (r *Registry) IncrementDownloadCounter(ctx context.Context, module string) error {
+	return r.repo.IncrementDownloadCounter(ctx, module)
+}
+
 // UpdatePackages is run internally to update the info of all the packages.
 // A developer can update the list of plugins in a package, add or remove
 // plugins, and this periodical procedure will reflect those changes.
