@@ -19,7 +19,6 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -27,23 +26,16 @@ import (
 
 	"github.com/cs3org/gaia/service/internal/crud"
 	model "github.com/cs3org/gaia/service/internal/model/registry"
-	"github.com/cs3org/reva"
-	"github.com/cs3org/reva/pkg/rhttp/global"
-	"github.com/cs3org/reva/pkg/utils/cfg"
 	"github.com/go-chi/chi/v5"
 )
 
-func init() {
-	reva.RegisterPlugin(Builder{})
-}
-
 type Builder struct {
 	router *chi.Mux
-	c      *config
+	c      *Config
 	reg    *model.Registry
 }
 
-type config struct {
+type Config struct {
 	BuildFolder      string        `mapstructure:"build_folder"`
 	BinaryTempFolder string        `mapstructure:"binary_temp_folder"`
 	BuildTimeout     time.Duration `mapstructure:"build_timeout"`
@@ -52,7 +44,7 @@ type config struct {
 	tmpFile bool
 }
 
-func (c *config) ApplyDefaults() {
+func (c *Config) ApplyDefaults() {
 	if c.BinaryTempFolder == "" {
 		c.BinaryTempFolder, _ = os.MkdirTemp("", "gaia-*")
 	}
@@ -71,19 +63,8 @@ func (c *config) ApplyDefaults() {
 	}
 }
 
-func (Builder) RevaPlugin() reva.PluginInfo {
-	return reva.PluginInfo{
-		ID:  "http.services.gaia",
-		New: New,
-	}
-}
-
-func New(ctx context.Context, m map[string]any) (global.Service, error) {
-	var c config
-	if err := cfg.Decode(m, &c); err != nil {
-		return nil, err
-	}
-
+func New(c *Config) (*Builder, error) {
+	c.ApplyDefaults()
 	db, err := crud.NewSqlite(c.DBFile)
 	if err != nil {
 		return nil, err
@@ -91,7 +72,7 @@ func New(ctx context.Context, m map[string]any) (global.Service, error) {
 	registry := model.New(db)
 	b := Builder{
 		router: chi.NewRouter(),
-		c:      &c,
+		c:      c,
 		reg:    registry,
 	}
 	b.initRouter()
@@ -169,16 +150,9 @@ func (s *Builder) registerPlugin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Builder) Handler() http.Handler { return s.router }
 
-func (s *Builder) Prefix() string { return "gaia" }
-
 func (s *Builder) Close() error {
 	if s.c.tmpFile {
 		return os.RemoveAll(s.c.DBFile)
 	}
 	return nil
 }
-
-func (s *Builder) Unprotected() []string { return []string{"/"} }
-
-var _ global.Service = (*Builder)(nil)
-var _ global.NewService = New
