@@ -16,6 +16,7 @@
 
 # Gaia build
 /gaia
+gaiasvc
 
 # Gaia frontend static files
 /service/static
