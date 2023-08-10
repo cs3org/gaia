@@ -46,6 +46,20 @@ func (w *workspace) init() error {
 	return nil
 }
 
+func fromEnv(key string) string {
+	env := os.Environ()
+	for _, val := range env {
+		s := strings.SplitN(val, "=", 2)
+		if len(s) != 2 {
+			continue
+		}
+		if s[0] == key {
+			return s[1]
+		}
+	}
+	return ""
+}
+
 func (w *workspace) run(ctx context.Context, name string, args ...string) (string, error) {
 	var stdout, stderr strings.Builder
 
@@ -53,7 +67,8 @@ func (w *workspace) run(ctx context.Context, name string, args ...string) (strin
 	cmd.Dir = w.tmp
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	cmd.Env = []string{"GOPATH=" + w.gopath}
+	pathEnv := fmt.Sprintf("PATH=%s", fromEnv("PATH"))
+	cmd.Env = []string{"GOPATH=" + w.gopath, pathEnv}
 
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
