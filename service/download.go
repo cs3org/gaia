@@ -29,7 +29,7 @@ import (
 	"strings"
 
 	"github.com/cs3org/gaia/pkg/builder"
-	"github.com/cs3org/reva/pkg/appctx"
+	"github.com/rs/zerolog"
 )
 
 type downloadRequest struct {
@@ -41,7 +41,7 @@ type downloadRequest struct {
 
 func (s *Builder) download(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	log := appctx.GetLogger(ctx)
+	log := zerolog.Ctx(ctx)
 
 	req, err := parseDownloadRequest(r)
 	if err != nil {
@@ -102,7 +102,7 @@ func (s *Builder) download(w http.ResponseWriter, r *http.Request) {
 }
 
 func sendBinary(ctx context.Context, w http.ResponseWriter, name, binary string) {
-	log := appctx.GetLogger(ctx)
+	log := zerolog.Ctx(ctx)
 
 	file, err := os.Open(binary)
 	if err != nil {

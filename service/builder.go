@@ -26,20 +26,21 @@ import (
 
 	"github.com/cs3org/gaia/service/internal/crud"
 	model "github.com/cs3org/gaia/service/internal/model/registry"
-	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 )
 
 type Builder struct {
-	router *chi.Mux
+	router http.Handler
 	c      *Config
 	reg    *model.Registry
 }
 
 type Config struct {
-	BuildFolder      string        `mapstructure:"build_folder"`
-	BinaryTempFolder string        `mapstructure:"binary_temp_folder"`
-	BuildTimeout     time.Duration `mapstructure:"build_timeout"`
-	DBFile           string        `mapstructure:"db_file"`
+	BuildFolder      string          `mapstructure:"build_folder"`
+	BinaryTempFolder string          `mapstructure:"binary_temp_folder"`
+	BuildTimeout     time.Duration   `mapstructure:"build_timeout"`
+	DBFile           string          `mapstructure:"db_file"`
+	Log              *zerolog.Logger `mapstructure:"-"`
 
 	tmpFile bool
 }
@@ -61,6 +62,11 @@ func (c *Config) ApplyDefaults() {
 		c.DBFile = tmp.Name()
 		c.tmpFile = true
 	}
+
+	if c.Log == nil {
+		l := zerolog.Nop()
+		c.Log = &l
+	}
 }
 
 func New(c *Config) (*Builder, error) {
@@ -71,18 +77,46 @@ func New(c *Config) (*Builder, error) {
 	}
 	registry := model.New(db)
 	b := Builder{
-		router: chi.NewRouter(),
-		c:      c,
-		reg:    registry,
+		c:   c,
+		reg: registry,
 	}
 	b.initRouter()
 	return &b, nil
 }
 
 func (s *Builder) initRouter() {
-	s.router.Get("/download", s.download)
-	s.router.Get("/plugins", s.listPlugins)
-	s.router.Post("/plugins", s.registerPlugin)
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/download", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			s.download(w, r)
+			return
+		default:
+			methodNotAllowed(w)
+			return
+		}
+	})
+
+	mux.HandleFunc("/plugins", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			s.listPlugins(w, r)
+			return
+		case http.MethodPost:
+			s.registerPlugin(w, r)
+			return
+		default:
+			methodNotAllowed(w)
+			return
+		}
+	})
+
+	s.router = RecoverFromPanicMiddleware(s.c.Log, RequestLoggerMiddleware(s.c.Log, mux))
+}
+
+func methodNotAllowed(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
 func writeError(err error, code int, w http.ResponseWriter) {
