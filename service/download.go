@@ -159,6 +159,10 @@ func parseDownloadRequest(r *http.Request) (*downloadRequest, error) {
 func parsePlugins(plugins []string) ([]builder.Plugin, error) {
 	p := make([]builder.Plugin, 0, len(plugins))
 	for _, plugin := range plugins {
+		plugin = strings.TrimSpace(plugin)
+		if plugin == "" {
+			continue
+		}
 		p = append(p, parsePlugin(plugin))
 	}
 	return p, nil
