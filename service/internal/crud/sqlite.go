@@ -41,7 +41,12 @@ func NewSqlite(file string) (Repository, error) {
 }
 
 func (d *drv) StorePackage(ctx context.Context, pkg *model.Package) error {
-	return d.db.Create(pkg).Error
+	return d.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(pkg).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.Download{PackageModule: pkg.Module}).Error
+	})
 }
 
 func (d *drv) ListPackages(ctx context.Context) ([]*model.Package, error) {
