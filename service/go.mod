@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/cs3org/gaia v0.0.0-20230721064608-781e18d99071
 	github.com/glebarez/sqlite v1.9.0
+	github.com/mattn/go-isatty v0.0.17
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/openzipkin/zipkin-go v0.4.1
 	github.com/rs/zerolog v1.29.1
@@ -24,8 +25,8 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
-	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.9 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rs/xid v1.4.0 // indirect
 	github.com/spf13/afero v1.9.5 // indirect
