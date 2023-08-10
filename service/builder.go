@@ -27,6 +27,7 @@ import (
 	"github.com/cs3org/gaia/service/internal/crud"
 	model "github.com/cs3org/gaia/service/internal/model/registry"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type Builder struct {
@@ -171,12 +172,19 @@ type registerPluginRequest struct {
 }
 
 func (s *Builder) registerPlugin(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	var req registerPluginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Info().Err(err).Msg("error decoding request")
 		writeError(err, http.StatusBadRequest, w)
 		return
 	}
-	if err := s.reg.RegisterPackage(r.Context(), req.Module); err != nil {
+
+	log := zerolog.Ctx(ctx)
+	log.Info().Str("module", req.Module).Msg("register module requested")
+	if err := s.reg.RegisterPackage(ctx, req.Module); err != nil {
+		log.Warn().Err(err).Msg("error registering module")
 		writeError(err, http.StatusBadRequest, w)
 		return
 	}

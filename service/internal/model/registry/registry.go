@@ -24,6 +24,7 @@ import (
 
 	"github.com/cs3org/gaia/service/internal/crud"
 	"github.com/cs3org/gaia/service/internal/model"
+	"github.com/rs/zerolog"
 )
 
 // Registry is a place where all the reva plugins
@@ -97,36 +98,48 @@ func New(repository crud.Repository) *Registry {
 // It checks that the module contains the reva.json file, with all the
 // required information, and eventually adds the package info in the registry.
 func (r *Registry) RegisterPackage(ctx context.Context, module string) error {
+	log := zerolog.Ctx(ctx).With().Str("module", module).Logger()
+
 	var w workspace
 	if err := w.init(); err != nil {
 		return err
 	}
 	defer w.close()
 
+	log.Debug().Msg("downloading module")
 	path, err := w.downloadModule(ctx, module)
 	if err != nil {
 		return err
 	}
 
+	log.Debug().Msg("reading manifest")
 	manifest, err := w.readManifest(path)
 	if err != nil {
 		return err
 	}
 
 	if !manifest.Valid() {
+		log.Info().Interface("manifest", manifest).Msg("manifest is not valid")
 		return errors.New("manifest is not valid")
 	}
+
+	log.Debug().Interface("manifest", manifest).Msg("got manifest")
 
 	plugins := make([]model.Plugin, 0, len(manifest.Plugins))
 	for _, p := range manifest.Plugins {
 		plugins = append(plugins, model.Plugin{ID: p.ID, Description: p.Description})
 	}
-	return r.repo.StorePackage(ctx, &model.Package{
+	if err := r.repo.StorePackage(ctx, &model.Package{
 		Author:   manifest.Author,
 		Module:   module,
 		Homepage: manifest.Homepage,
 		Plugins:  plugins,
-	})
+	}); err != nil {
+		return err
+	}
+
+	log.Info().Msg("module registered")
+	return nil
 }
 
 // ListPackages returns the list of all the packages registered in the registry.

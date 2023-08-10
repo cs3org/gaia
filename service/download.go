@@ -43,6 +43,8 @@ func (s *Builder) download(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := zerolog.Ctx(ctx)
 
+	log.Info().Msg("download requested")
+
 	req, err := parseDownloadRequest(r)
 	if err != nil {
 		log.Info().Err(err).Msg("error parsing download request")
