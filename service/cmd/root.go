@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/cs3org/gaia/service"
 	"github.com/rs/zerolog"
@@ -57,6 +58,7 @@ var rootCmd = &cobra.Command{
 
 		// TODO: add support to TLS
 		trapSignals(&server, b)
+		log.Info().Msgf("started http service listening on %s", config.HTTP.Address)
 		if err := http.ListenAndServe(config.HTTP.Address, b.Handler()); err != nil {
 			log.Fatal().Err(err).Send()
 		}
@@ -66,16 +68,19 @@ var rootCmd = &cobra.Command{
 func trapSignals(server *http.Server, closable ...io.Closer) {
 	go func() {
 		sigint := make(chan os.Signal, 1)
-		signal.Notify(sigint, os.Interrupt)
+		signal.Notify(sigint, syscall.SIGINT, syscall.SIGTERM)
 		<-sigint
 		if err := server.Shutdown(context.Background()); err != nil {
 			log.Error().Err(err).Msg("error shutting down http server")
+		} else {
+			log.Info().Msg("gracefully closed http server")
 		}
 		for _, c := range closable {
 			if err := c.Close(); err != nil {
 				log.Error().Err(err).Send()
 			}
 		}
+		os.Exit(1)
 	}()
 }
 
