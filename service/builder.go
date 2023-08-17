@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/cs3org/gaia/service/internal/crud"
-	model "github.com/cs3org/gaia/service/internal/model/registry"
+	"github.com/cs3org/gaia/service/internal/model/registry"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -39,7 +39,7 @@ var static embed.FS
 type Builder struct {
 	router      http.Handler
 	c           *Config
-	reg         *model.Registry
+	reg         *registry.Registry
 	staticFiles fs.FS
 }
 
@@ -49,6 +49,7 @@ type Config struct {
 	BuildTimeout     time.Duration   `mapstructure:"build_timeout"`
 	DBFile           string          `mapstructure:"db_file"`
 	Log              *zerolog.Logger `mapstructure:"-"`
+	registry.Config  `mapstructure:",squash"`
 
 	tmpFile bool
 }
@@ -75,6 +76,7 @@ func (c *Config) ApplyDefaults() {
 		l := zerolog.Nop()
 		c.Log = &l
 	}
+	c.Config.Log = c.Log
 }
 
 func New(c *Config) (*Builder, error) {
@@ -84,7 +86,7 @@ func New(c *Config) (*Builder, error) {
 		return nil, err
 	}
 
-	registry := model.New(db)
+	registry := registry.New(&c.Config, db)
 	staticFiles, err := fs.Sub(static, "static")
 	if err != nil {
 		return nil, errors.New("error opening static files")

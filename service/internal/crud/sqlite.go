@@ -20,10 +20,12 @@ package crud
 
 import (
 	"context"
+	"errors"
 
 	"github.com/cs3org/gaia/service/internal/model"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type drv struct {
@@ -31,7 +33,9 @@ type drv struct {
 }
 
 func NewSqlite(file string) (Repository, error) {
-	db, err := gorm.Open(sqlite.Open(file), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(file), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -47,6 +51,18 @@ func (d *drv) StorePackage(ctx context.Context, pkg *model.Package) error {
 		}
 		return tx.Create(&model.Download{PackageModule: pkg.Module}).Error
 	})
+}
+
+func (d *drv) GetPackage(ctx context.Context, module string) (*model.Package, error) {
+	pkg := model.Package{Module: module}
+	err := d.db.First(&pkg).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &pkg, nil
 }
 
 func (d *drv) ListPackages(ctx context.Context) ([]*model.Package, error) {

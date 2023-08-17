@@ -20,6 +20,7 @@ package crud
 
 import (
 	"context"
+	"errors"
 
 	"github.com/cs3org/gaia/service/internal/model"
 )
@@ -29,5 +30,9 @@ import (
 type Repository interface {
 	StorePackage(ctx context.Context, pkg *model.Package) error
 	ListPackages(ctx context.Context) ([]*model.Package, error)
+	GetPackage(ctx context.Context, module string) (*model.Package, error)
 	IncrementDownloadCounter(ctx context.Context, module string) error
 }
+
+// ErrNotFound is the error returned when the module is not found
+var ErrNotFound = errors.New("module not found")

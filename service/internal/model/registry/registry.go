@@ -20,10 +20,18 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"time"
 
 	"github.com/cs3org/gaia/service/internal/crud"
 	"github.com/cs3org/gaia/service/internal/model"
+	"github.com/go-git/go-billy/v5/memfs"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/storage/memory"
 	"github.com/rs/zerolog"
 )
 
@@ -51,6 +59,7 @@ import (
 //     describing the plugins included
 //     in the package (required)
 type Registry struct {
+	c    *Config
 	repo crud.Repository
 }
 
@@ -88,9 +97,29 @@ func (m *Manifest) Valid() bool {
 	return true
 }
 
+// Config holds the configuration for the registry.
+type Config struct {
+	PluginsRegistryRepository string          `mapstructure:"plugins_registry_repository"`
+	PluginsFile               string          `mapstructure:"plugins_file"`
+	Log                       *zerolog.Logger `mapstructure:"-"`
+}
+
 // New creates an instance of a Registry.
-func New(repository crud.Repository) *Registry {
-	return &Registry{repo: repository}
+func New(c *Config, repository crud.Repository) *Registry {
+	r := &Registry{repo: repository, c: c}
+	// TODO: clean gorouting
+	go r.updateProcess()
+	return r
+}
+
+func (r *Registry) updateProcess() {
+	t := time.NewTicker(5 * time.Minute)
+	for {
+		if err := r.UpdatePackages(context.Background()); err != nil {
+			r.c.Log.Error().Err(err).Msg("error updating packages")
+		}
+		<-t.C
+	}
 }
 
 // RegisterPackage registers a package, containing a list of related plugins,
@@ -115,6 +144,9 @@ func (r *Registry) RegisterPackage(ctx context.Context, module string) error {
 	log.Debug().Msg("reading manifest")
 	manifest, err := w.readManifest(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrManifestNotFound
+		}
 		return err
 	}
 
@@ -156,5 +188,56 @@ func (r *Registry) IncrementDownloadCounter(ctx context.Context, module string) 
 // A developer can update the list of plugins in a package, add or remove
 // plugins, and this periodical procedure will reflect those changes.
 func (r *Registry) UpdatePackages(ctx context.Context) error {
-	return errors.New("not yet implemented")
+	// For now it just adds new packages from the list
+
+	r.c.Log.Info().Msg("triggered update packages")
+	repo, err := git.CloneContext(ctx, memory.NewStorage(), memfs.New(), &git.CloneOptions{
+		URL:           r.c.PluginsRegistryRepository,
+		Depth:         1,
+		ReferenceName: plumbing.Master,
+	})
+	if err != nil {
+		return fmt.Errorf("error cloning repository %s: %w", r.c.PluginsRegistryRepository, err)
+	}
+
+	w, err := repo.Worktree()
+	if err != nil {
+		return err
+	}
+
+	f, err := w.Filesystem.Open(r.c.PluginsFile)
+	if err != nil {
+		return fmt.Errorf("error opening file %s: %w", r.c.PluginsFile, err)
+	}
+	defer f.Close()
+
+	var plugins []string
+	if err := json.NewDecoder(f).Decode(&plugins); err != nil {
+		return fmt.Errorf("error decodong json file %s: %w", r.c.PluginsFile, err)
+	}
+	r.c.Log.Debug().Strs("plugins", plugins).Msg("got plugins list")
+
+	ctx = r.c.Log.WithContext(ctx)
+	for _, p := range plugins {
+		_, err := r.repo.GetPackage(ctx, p)
+		if err == nil {
+			r.c.Log.Debug().Str("plugin", p).Msg("plugin already registered")
+			continue
+		}
+		if !errors.Is(err, crud.ErrNotFound) {
+			return fmt.Errorf("error getting package %s: %w", p, err)
+		}
+
+		r.c.Log.Debug().Str("plugin", p).Msg("registering plugin")
+		if err := r.RegisterPackage(ctx, p); err != nil {
+			r.c.Log.Warn().Err(err).Str("plugin", p).Msg("error registering plugin")
+			continue
+		}
+	}
+
+	return nil
 }
+
+// ErrManifestNotFound is the error returned when the
+// manifest is not found, while registering a new module.
+var ErrManifestNotFound = errors.New("manifest not found")
