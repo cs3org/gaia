@@ -30,7 +30,6 @@ import (
 	"github.com/cs3org/gaia/service/internal/crud"
 	"github.com/cs3org/gaia/service/internal/model/registry"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 //go:embed static/*
@@ -119,9 +118,6 @@ func (s *Builder) initRouter() {
 		case http.MethodGet:
 			s.listPlugins(w, r)
 			return
-		case http.MethodPost:
-			s.registerPlugin(w, r)
-			return
 		default:
 			methodNotAllowed(w)
 			return
@@ -180,29 +176,6 @@ func (s *Builder) listPlugins(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewEncoder(w).Encode(res); err != nil {
 		writeError(err, http.StatusInternalServerError, w)
-		return
-	}
-}
-
-type registerPluginRequest struct {
-	Module string `json:"module"`
-}
-
-func (s *Builder) registerPlugin(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	var req registerPluginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Info().Err(err).Msg("error decoding request")
-		writeError(err, http.StatusBadRequest, w)
-		return
-	}
-
-	log := zerolog.Ctx(ctx)
-	log.Info().Str("module", req.Module).Msg("register module requested")
-	if err := s.reg.RegisterPackage(ctx, req.Module); err != nil {
-		log.Warn().Err(err).Msg("error registering module")
-		writeError(err, http.StatusBadRequest, w)
 		return
 	}
 }
