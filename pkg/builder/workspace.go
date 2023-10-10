@@ -129,7 +129,23 @@ func (w workspace) newGoCommand(ctx context.Context, stderr io.Writer, args ...s
 		w.setEnv(env)
 	}
 	c.Env = w.goenv
+	pathEnv := fmt.Sprintf("PATH=%s", fromEnv("PATH"))
+	c.Env = append(c.Env, pathEnv)
 	return c
+}
+
+func fromEnv(key string) string {
+	env := os.Environ()
+	for _, val := range env {
+		s := strings.SplitN(val, "=", 2)
+		if len(s) != 2 {
+			continue
+		}
+		if s[0] == key {
+			return s[1]
+		}
+	}
+	return ""
 }
 
 func (w workspace) CreateFile(name string) (*os.File, error) {
