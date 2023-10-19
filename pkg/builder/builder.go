@@ -134,6 +134,13 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		return err
 	}
 
+	// do the replacement of the modules
+	if len(b.Replacement) != 0 {
+		if err := w.runGoModReplaceCommand(ctx, b.Replacement); err != nil {
+			return err
+		}
+	}
+
 	// TODO: verify all the versions
 	for _, plugin := range b.Plugins {
 		b.Log.Info().Msgf("adding plugin %s", plugin)
@@ -143,13 +150,6 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 	}
 	if err := w.runGoGetCommand(ctx, revaRepository, b.RevaVersion); err != nil {
 		return err
-	}
-
-	// do the replacement of the modules
-	if len(b.Replacement) != 0 {
-		if err := w.runGoModReplaceCommand(ctx, b.Replacement); err != nil {
-			return err
-		}
 	}
 
 	// run go mod tidy to fix all the modules
