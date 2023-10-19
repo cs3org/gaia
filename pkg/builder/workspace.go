@@ -35,6 +35,7 @@ type workspace struct {
 	folder string   // temp directory where all the ops are executed
 	goenv  []string // environment used for go commands
 	log    *zerolog.Logger
+	leave  bool
 }
 
 func (b *Builder) newWorkspace() (*workspace, error) {
@@ -42,12 +43,17 @@ func (b *Builder) newWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating temp directory: %w", err)
 	}
-	b.Log.Debug().Msgf("using temp folder %s as workspace", tmpFolder)
+	b.Log.Info().Msgf("using temp folder %s as workspace", tmpFolder)
 	w := &workspace{
 		folder: tmpFolder,
 		log:    b.Log,
+		leave:  b.LeaveWorkspace,
 	}
 	return w, nil
+}
+
+func (w *workspace) setLeave(leave bool) {
+	w.leave = leave
 }
 
 func (w *workspace) setEnvKV(key, val string) {
@@ -154,5 +160,8 @@ func (w workspace) CreateFile(name string) (*os.File, error) {
 }
 
 func (w workspace) Close() error {
+	if w.leave {
+		return nil
+	}
 	return os.RemoveAll(w.folder)
 }

@@ -38,13 +38,14 @@ type Platform struct {
 
 type Builder struct {
 	Platform
-	RevaVersion string
-	Tags        []string
-	Plugins     []Plugin
-	Replacement []Replace
-	TempFolder  string
-	Debug       bool
-	Log         *zerolog.Logger
+	RevaVersion    string
+	Tags           []string
+	Plugins        []Plugin
+	Replacement    []Replace
+	TempFolder     string
+	Debug          bool
+	Log            *zerolog.Logger
+	LeaveWorkspace bool
 }
 
 type Plugin struct {
