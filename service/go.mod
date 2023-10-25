@@ -1,6 +1,6 @@
 module github.com/cs3org/gaia/service
 
-go 1.20
+go 1.21
 
 require (
 	github.com/cs3org/gaia v0.0.0-20230810134317-275174957ff8

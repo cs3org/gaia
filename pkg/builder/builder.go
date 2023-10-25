@@ -19,10 +19,15 @@
 package builder
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -135,6 +140,25 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		return err
 	}
 
+	// if the reva repository has been replaced with a local one
+	// it might have further replacements
+	// if we do not consider them, the compilation will fail
+	if path, ok := isRevaLocalReplacement(b.Replacement); ok {
+		if gomod, err := parseGoModFile(ctx, filepath.Join(path, "go.mod")); err != nil {
+			b.Log.Error().Err(err).Send()
+		} else {
+			for _, replace := range gomod.Replace {
+				r := Replace{
+					From:      replace.Old.Path,
+					To:        replace.New.Path,
+					ToVersion: replace.New.Version,
+				}
+				b.Replacement = append(b.Replacement, r)
+				b.Log.Debug().Str("replace", r.Format()).Msg("inherited replace from local reva go.mod")
+			}
+		}
+	}
+
 	// do the replacement of the modules
 	if len(b.Replacement) != 0 {
 		if err := w.runGoModReplaceCommand(ctx, b.Replacement); err != nil {
@@ -178,7 +202,58 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 }
 
 func writeMainWithPlugins(f *os.File, plugins []Plugin) error {
+	plugins = slices.DeleteFunc(plugins, func(p Plugin) bool { return p.RepositoryPath == revaRepository })
 	return mainTemplate.Execute(f, plugins)
+}
+
+type GoMod struct {
+	Module struct {
+		Path string `json:"Path"`
+	} `json:"Module"`
+	Go      string `json:"Go"`
+	Require []struct {
+		Path     string `json:"Path"`
+		Version  string `json:"Version"`
+		Indirect bool   `json:"Indirect,omitempty"`
+	} `json:"Require"`
+	Exclude any `json:"Exclude"`
+	Replace []struct {
+		Old struct {
+			Path string `json:"Path"`
+		} `json:"Old"`
+		New struct {
+			Path    string `json:"Path"`
+			Version string `json:"Version"`
+		} `json:"New"`
+	} `json:"Replace"`
+	Retract any `json:"Retract"`
+}
+
+func parseGoModFile(ctx context.Context, path string) (*GoMod, error) {
+	var stdout bytes.Buffer
+
+	c := exec.CommandContext(ctx, utils.Go(), "mod", "edit", "-json", path)
+	c.Stdout = &stdout
+
+	if err := c.Run(); err != nil {
+		return nil, fmt.Errorf("error running command: %w", err)
+	}
+
+	var gomod GoMod
+	if err := json.NewDecoder(&stdout).Decode(&gomod); err != nil {
+		return nil, fmt.Errorf("error decoding go.mod: %w", err)
+	}
+	return &gomod, nil
+}
+
+func isRevaLocalReplacement(repl []Replace) (string, bool) {
+	for _, r := range repl {
+		if r.From == revaRepository {
+			_, err := os.Stat(r.To)
+			return r.To, err == nil
+		}
+	}
+	return "", false
 }
 
 var mainTemplate = template.Must(template.New("main.go").Parse(`package main
