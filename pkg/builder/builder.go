@@ -23,6 +23,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/template"
 
 	"github.com/cs3org/gaia/internal/utils"
@@ -163,6 +164,9 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 	} else {
 		buildArgs = append(buildArgs, "-trimpath",
 			"-ldflags", "-w -s") // trim debug symbols
+	}
+	if len(b.Tags) > 0 {
+		buildArgs = append(buildArgs, "-tags", strings.Join(b.Tags, ","))
 	}
 	// TODO: revad requires to set some compile time variables for setting the version
 	b.Log.Info().Msg("building revad binary")

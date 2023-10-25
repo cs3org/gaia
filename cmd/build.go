@@ -30,6 +30,7 @@ var buildFlags = struct {
 	Output         string
 	Debug          bool
 	LeaveWorkspace bool
+	BuildTags      []string
 }{}
 
 // buildCmd represents the build command
@@ -53,6 +54,7 @@ var buildCmd = &cobra.Command{
 			Debug:          buildFlags.Debug,
 			Log:            log,
 			LeaveWorkspace: buildFlags.LeaveWorkspace,
+			Tags:           buildFlags.BuildTags,
 		}
 
 		err := builder.Build(ctx, buildFlags.Output)
@@ -105,4 +107,5 @@ func init() {
 	buildCmd.Flags().StringVarP(&buildFlags.Output, "output", "o", "./revad", "output file")
 	buildCmd.Flags().BoolVarP(&buildFlags.Debug, "debug", "d", false, "compile with debug symbols")
 	buildCmd.Flags().BoolVarP(&buildFlags.LeaveWorkspace, "leave-workspace", "l", false, "leave temporary build work space after execution")
+	buildCmd.Flags().StringSliceVar(&buildFlags.BuildTags, "tags", nil, "list of additional build tags to consider satisfied during the build")
 }
