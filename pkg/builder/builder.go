@@ -182,19 +182,24 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		return err
 	}
 
-	buildArgs := []string{}
+	args := make(buildArgs)
 	if b.Debug {
-		buildArgs = append(buildArgs, "-gcflags", "all=-N -l")
+		args.Add("-gcflags", "all=-N -l")
 	} else {
-		buildArgs = append(buildArgs, "-trimpath",
-			"-ldflags", "-w -s") // trim debug symbols
+		args.Add("-trimpath", "")
+		args.Add("-ldflags", "-w", "-s")
 	}
 	if len(b.Tags) > 0 {
-		buildArgs = append(buildArgs, "-tags", strings.Join(b.Tags, ","))
+		args.Add("-tags", strings.Join(b.Tags, ","))
 	}
-	// TODO: revad requires to set some compile time variables for setting the version
+
+	// add compile time flags for version, commit, go version and build date
+	bflags := w.generateBuildFlags(b.Replacement)
+	b.Log.Debug().Interface("flags", bflags).Msg("using the following build flags")
+	args.Add("-ldflags", bflags.Format())
+
 	b.Log.Info().Msg("building revad binary")
-	if err := w.runGoBuildCommand(ctx, "main.go", output, buildArgs...); err != nil {
+	if err := w.runGoBuildCommand(ctx, "main.go", output, args.Format()...); err != nil {
 		return err
 	}
 
