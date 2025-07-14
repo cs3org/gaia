@@ -208,7 +208,13 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 
 func writeMainWithPlugins(f *os.File, plugins []Plugin) error {
 	plugins = slices.DeleteFunc(plugins, func(p Plugin) bool { return p.RepositoryPath == revaRepository })
-	return mainTemplate.Execute(f, plugins)
+	return mainTemplate.Execute(f, struct {
+		Plugins  []Plugin
+		RevaRepo string
+	}{
+		Plugins:  plugins,
+		RevaRepo: revaRepository,
+	})
 }
 
 type GoMod struct {
@@ -264,9 +270,10 @@ func isRevaLocalReplacement(repl []Replace) (string, bool) {
 var mainTemplate = template.Must(template.New("main.go").Parse(`package main
 
 import (
-	revadcmd "github.com/cs3org/reva/cmd/revad"
-	{{ range . }}_ "{{ .RepositoryPath }}"
-	{{ end }}
+	revadcmd "{{.RevaRepo}}/cmd/revad"
+{{- range .Plugins }}
+	_ "{{ .RepositoryPath }}"
+{{- end }}
 )
 
 func main() {
