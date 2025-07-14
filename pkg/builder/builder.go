@@ -35,7 +35,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const revaRepository = "github.com/cs3org/reva"
+const revaRepository = "github.com/cs3org/reva/v3"
 
 type Platform struct {
 	OS   string
