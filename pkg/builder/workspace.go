@@ -131,7 +131,7 @@ func (w workspace) runGoModReplaceCommand(ctx context.Context, replacement []Rep
 
 func (w workspace) newGoCommand(ctx context.Context, stderr io.Writer, args ...string) *exec.Cmd {
 	c := w.newCommand(ctx, utils.Go(), stderr, args...)
-	for _, env := range utils.FromGoEnv("GOPATH", "GOMODCACHE", "GOCACHE") {
+	for _, env := range utils.FromGoEnv("GOPATH", "GOMODCACHE", "GOCACHE", "CGO_ENABLED") {
 		w.setEnv(env)
 	}
 	c.Env = w.goenv
