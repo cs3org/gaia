@@ -57,7 +57,7 @@ type buildFlags struct {
 	BuildDate time.Time
 }
 
-const buildVariablesPkg = "github.com/cs3org/reva/cmd/revad"
+const buildVariablesPkg = revaRepository + "/cmd/revad"
 
 func generateBuildFlag(key, val string) string {
 	return "-X " + key + "=" + val
