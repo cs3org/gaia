@@ -19,6 +19,8 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/cs3org/gaia/pkg/builder"
@@ -33,6 +35,8 @@ var buildFlags = struct {
 	Workspace      string
 	BuildTags      []string
 	Vendor         bool
+	OnlyPrepare    bool
+	OnlyBuild      bool
 }{}
 
 // buildCmd represents the build command
@@ -42,6 +46,20 @@ var buildCmd = &cobra.Command{
 	PreRunE: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
+
+		if buildFlags.OnlyPrepare && buildFlags.OnlyBuild {
+			fmt.Fprintln(os.Stderr, "Error: --only-prepare and --only-build cannot be used together")
+			os.Exit(1)
+		}
+
+		if buildFlags.OnlyPrepare {
+			buildFlags.LeaveWorkspace = true
+		}
+
+		if buildFlags.OnlyBuild && buildFlags.Workspace == "" {
+			fmt.Fprintln(os.Stderr, "Error: asking to only build without specifying an existing workspace")
+			os.Exit(2)
+		}
 
 		version := "latest"
 		if len(args) != 0 {
@@ -62,14 +80,18 @@ var buildCmd = &cobra.Command{
 		}
 		defer builder.Close()
 
-		err := builder.Prepare(ctx)
-		if err != nil {
-			log.Fatal().Err(err).Send()
+		if !buildFlags.OnlyBuild {
+			err := builder.Prepare(ctx)
+			if err != nil {
+				log.Fatal().Err(err).Send()
+			}
 		}
 
-		err = builder.Build(ctx, buildFlags.Output)
-		if err != nil {
-			log.Fatal().Err(err).Send()
+		if !buildFlags.OnlyPrepare {
+			err := builder.Build(ctx, buildFlags.Output)
+			if err != nil {
+				log.Fatal().Err(err).Send()
+			}
 		}
 	},
 }
@@ -120,4 +142,6 @@ func init() {
 	buildCmd.Flags().StringVarP(&buildFlags.Workspace, "workspace", "w", "", "path where to create the build files, leave empty for temp folder")
 	buildCmd.Flags().StringSliceVar(&buildFlags.BuildTags, "tags", nil, "list of additional build tags to consider satisfied during the build")
 	buildCmd.Flags().BoolVarP(&buildFlags.Vendor, "vendor", "", false, "uses vendoring to keep all dependencies local")
+	buildCmd.Flags().BoolVarP(&buildFlags.OnlyPrepare, "only-prepare", "", false, "only run the prepare workspace stage (forces --leave-workspace)")
+	buildCmd.Flags().BoolVarP(&buildFlags.OnlyBuild, "only-build", "", false, "only run the build workspace stage (requires --workspace to be set)")
 }
