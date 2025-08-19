@@ -46,6 +46,7 @@ type Builder struct {
 	Debug          bool
 	Log            *zerolog.Logger
 	LeaveWorkspace bool
+	Vendor         bool
 	w              *workspace
 }
 
@@ -143,6 +144,13 @@ func (b *Builder) Prepare(ctx context.Context) error {
 		return err
 	}
 
+	if b.Vendor {
+		// Keep all modules locally
+		if err := b.w.runGoCommand(ctx, "mod", "vendor"); err != nil {
+			return err
+		}
+	}
+
 	// add compile time flags for version, commit, go version and build date
 	// store them in the project so that it can be used independently
 	bflags := b.w.generateBuildFlags(b.Replacement)
@@ -204,6 +212,10 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 
 	b.Log.Debug().Interface("flags", bflags).Msg("using the following build flags")
 	args.Add("-ldflags", string(bflags))
+
+	if b.Vendor {
+		args.Add("-mod=vendor")
+	}
 
 	b.Log.Info().Msg("building revad binary")
 	if err := b.w.runGoBuildCommand(ctx, "main.go", output, args.Format()...); err != nil {

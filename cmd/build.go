@@ -32,6 +32,7 @@ var buildFlags = struct {
 	LeaveWorkspace bool
 	Workspace      string
 	BuildTags      []string
+	Vendor         bool
 }{}
 
 // buildCmd represents the build command
@@ -57,6 +58,7 @@ var buildCmd = &cobra.Command{
 			LeaveWorkspace: buildFlags.LeaveWorkspace,
 			TempFolder:     buildFlags.Workspace,
 			Tags:           buildFlags.BuildTags,
+			Vendor:         buildFlags.Vendor,
 		}
 		defer builder.Close()
 
@@ -117,4 +119,5 @@ func init() {
 	buildCmd.Flags().BoolVarP(&buildFlags.LeaveWorkspace, "leave-workspace", "l", false, "leave temporary build work space after execution")
 	buildCmd.Flags().StringVarP(&buildFlags.Workspace, "workspace", "w", "", "path where to create the build files, leave empty for temp folder")
 	buildCmd.Flags().StringSliceVar(&buildFlags.BuildTags, "tags", nil, "list of additional build tags to consider satisfied during the build")
+	buildCmd.Flags().BoolVarP(&buildFlags.Vendor, "vendor", "", false, "uses vendoring to keep all dependencies local")
 }
