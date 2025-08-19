@@ -159,6 +159,11 @@ func (w workspace) CreateFile(name string) (*os.File, error) {
 	return os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 }
 
+func (w workspace) OpenFile(name string) (*os.File, error) {
+	path := filepath.Join(w.folder, name)
+	return os.OpenFile(path, os.O_RDONLY, 0644)
+}
+
 func (w workspace) Close() error {
 	if w.leave {
 		return nil

@@ -75,6 +75,7 @@ func (s *Builder) download(w http.ResponseWriter, r *http.Request) {
 		Plugins:     plugins,
 		TempFolder:  s.c.BuildFolder,
 	}
+	defer b.Close()
 
 	output, err := os.CreateTemp(s.c.BinaryTempFolder, "revad")
 	if err != nil {
@@ -87,6 +88,11 @@ func (s *Builder) download(w http.ResponseWriter, r *http.Request) {
 
 	buildCtx, cancel := context.WithTimeout(ctx, s.c.BuildTimeout)
 	defer cancel()
+	if err := b.Prepare(buildCtx); err != nil {
+		log.Error().Err(err).Msg("error preparing build")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	if err := b.Build(buildCtx, output.Name()); err != nil {
 		log.Error().Err(err).Msg("error building reva")
 		w.WriteHeader(http.StatusInternalServerError)

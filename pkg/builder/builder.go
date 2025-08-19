@@ -19,17 +19,11 @@
 package builder
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
-	"text/template"
 
 	"github.com/cs3org/gaia/internal/utils"
 	"github.com/rs/zerolog"
@@ -52,61 +46,16 @@ type Builder struct {
 	Debug          bool
 	Log            *zerolog.Logger
 	LeaveWorkspace bool
+	w              *workspace
 }
 
-type Plugin struct {
-	RepositoryPath string
-	Version        string
-}
-
-func (p Plugin) String() string {
-	s := p.RepositoryPath
-	if p.Version != "" {
-		s += "@" + p.Version
-	}
-	return s
-}
-
-type Replace struct {
-	From      string
-	To        string
-	ToVersion string
-}
-
-// Format formats the replacement string to be valid
-// with the go mod edit command.
-func (r Replace) Format() string {
-	s := r.From + "=" + r.To
-	if r.ToVersion != "" {
-		s += "@" + r.ToVersion
-	}
-	return s
-}
-
-func (r Replace) String() string {
-	s := r.From + " => " + r.To
-	if r.ToVersion != "" {
-		s += "@" + r.ToVersion
-	}
-	return s
-}
-
-func (b *Builder) Build(ctx context.Context, output string) error {
-	if output == "" {
-		return errors.New("output file name cannot be empty")
-	}
+func (b *Builder) getWorkspace() error {
 	if b.Log == nil {
 		log := zerolog.Nop()
 		b.Log = &log
 	}
 
-	b.Log.Info().Msgf("building reva using version %s", b.RevaVersion)
-
 	var err error
-	output, err = filepath.Abs(output)
-	if err != nil {
-		return err
-	}
 
 	if b.Platform.Arch == "" {
 		b.Platform.Arch = utils.KeyFromGoEnv("GOARCH")
@@ -118,19 +67,31 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		b.RevaVersion = "latest"
 	}
 
-	w, err := b.newWorkspace()
+	b.w, err = b.newWorkspace()
 	if err != nil {
 		return err
 	}
-	defer w.Close()
 
-	w.setEnvKV("GOOS", b.Platform.OS)
-	w.setEnvKV("GOARCH", b.Platform.Arch)
+	b.w.setEnvKV("GOOS", b.Platform.OS)
+	b.w.setEnvKV("GOARCH", b.Platform.Arch)
 
-	if err := w.runGoCommand(ctx, "mod", "init", "revad"); err != nil {
+	return nil
+}
+
+func (b *Builder) Prepare(ctx context.Context) error {
+
+	if b.w == nil {
+		if err := b.getWorkspace(); err != nil {
+			return err
+		}
+	}
+
+	b.Log.Info().Msgf("preparing reva using version %s", b.RevaVersion)
+
+	if err := b.w.runGoCommand(ctx, "mod", "init", "revad"); err != nil {
 		return err
 	}
-	f, err := w.CreateFile("main.go")
+	f, err := b.w.CreateFile("main.go")
 	if err != nil {
 		return err
 	}
@@ -161,7 +122,7 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 
 	// do the replacement of the modules
 	if len(b.Replacement) != 0 {
-		if err := w.runGoModReplaceCommand(ctx, b.Replacement); err != nil {
+		if err := b.w.runGoModReplaceCommand(ctx, b.Replacement); err != nil {
 			return err
 		}
 	}
@@ -169,16 +130,52 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 	// TODO: verify all the versions
 	for _, plugin := range b.Plugins {
 		b.Log.Info().Msgf("adding plugin %s", plugin)
-		if err := w.runGoGetCommand(ctx, plugin.RepositoryPath, plugin.Version); err != nil {
+		if err := b.w.runGoGetCommand(ctx, plugin.RepositoryPath, plugin.Version); err != nil {
 			return err
 		}
 	}
-	if err := w.runGoGetCommand(ctx, revaRepository, b.RevaVersion); err != nil {
+	if err := b.w.runGoGetCommand(ctx, revaRepository, b.RevaVersion); err != nil {
 		return err
 	}
 
 	// run go mod tidy to fix all the modules
-	if err := w.runGoCommand(ctx, "mod", "tidy"); err != nil {
+	if err := b.w.runGoCommand(ctx, "mod", "tidy"); err != nil {
+		return err
+	}
+
+	// add compile time flags for version, commit, go version and build date
+	// store them in the project so that it can be used independently
+	bflags := b.w.generateBuildFlags(b.Replacement)
+	f, err = b.w.CreateFile("bflags")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = f.WriteString(bflags.Format())
+	if err != nil {
+		panic(err)
+	}
+
+	return nil
+}
+
+func (b *Builder) Build(ctx context.Context, output string) error {
+
+	if b.w == nil {
+		if err := b.getWorkspace(); err != nil {
+			return err
+		}
+	}
+
+	b.Log.Info().Msgf("building reva using workspace %s", b.w.folder)
+
+	if output == "" {
+		return errors.New("output file name cannot be empty")
+	}
+	var err error
+	output, err = filepath.Abs(output)
+	if err != nil {
 		return err
 	}
 
@@ -194,89 +191,27 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 	}
 
 	// add compile time flags for version, commit, go version and build date
-	bflags := w.generateBuildFlags(b.Replacement)
-	b.Log.Debug().Interface("flags", bflags).Msg("using the following build flags")
-	args.Add("-ldflags", bflags.Format())
-
-	b.Log.Info().Msg("building revad binary")
-	if err := w.runGoBuildCommand(ctx, "main.go", output, args.Format()...); err != nil {
+	f, err := b.w.OpenFile("bflags")
+	if err != nil {
 		return err
 	}
+	defer f.Close()
 
+	bflags, err := os.ReadFile(f.Name())
+	if err != nil {
+		panic(err)
+	}
+
+	b.Log.Debug().Interface("flags", bflags).Msg("using the following build flags")
+	args.Add("-ldflags", string(bflags))
+
+	b.Log.Info().Msg("building revad binary")
+	if err := b.w.runGoBuildCommand(ctx, "main.go", output, args.Format()...); err != nil {
+		return err
+	}
 	return nil
 }
 
-func writeMainWithPlugins(f *os.File, plugins []Plugin) error {
-	plugins = slices.DeleteFunc(plugins, func(p Plugin) bool { return p.RepositoryPath == revaRepository })
-	return mainTemplate.Execute(f, struct {
-		Plugins  []Plugin
-		RevaRepo string
-	}{
-		Plugins:  plugins,
-		RevaRepo: revaRepository,
-	})
+func (b *Builder) Close() {
+	b.w.Close()
 }
-
-type GoMod struct {
-	Module struct {
-		Path string `json:"Path"`
-	} `json:"Module"`
-	Go      string `json:"Go"`
-	Require []struct {
-		Path     string `json:"Path"`
-		Version  string `json:"Version"`
-		Indirect bool   `json:"Indirect,omitempty"`
-	} `json:"Require"`
-	Exclude any `json:"Exclude"`
-	Replace []struct {
-		Old struct {
-			Path string `json:"Path"`
-		} `json:"Old"`
-		New struct {
-			Path    string `json:"Path"`
-			Version string `json:"Version"`
-		} `json:"New"`
-	} `json:"Replace"`
-	Retract any `json:"Retract"`
-}
-
-func parseGoModFile(ctx context.Context, path string) (*GoMod, error) {
-	var stdout bytes.Buffer
-
-	c := exec.CommandContext(ctx, utils.Go(), "mod", "edit", "-json", path)
-	c.Stdout = &stdout
-
-	if err := c.Run(); err != nil {
-		return nil, fmt.Errorf("error running command: %w", err)
-	}
-
-	var gomod GoMod
-	if err := json.NewDecoder(&stdout).Decode(&gomod); err != nil {
-		return nil, fmt.Errorf("error decoding go.mod: %w", err)
-	}
-	return &gomod, nil
-}
-
-func isRevaLocalReplacement(repl []Replace) (string, bool) {
-	for _, r := range repl {
-		if r.From == revaRepository {
-			_, err := os.Stat(r.To)
-			return r.To, err == nil
-		}
-	}
-	return "", false
-}
-
-var mainTemplate = template.Must(template.New("main.go").Parse(`package main
-
-import (
-	revadcmd "{{.RevaRepo}}/cmd/revad"
-{{- range .Plugins }}
-	_ "{{ .RepositoryPath }}"
-{{- end }}
-)
-
-func main() {
-	revadcmd.Main()
-}
-`))
