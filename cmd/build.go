@@ -58,8 +58,14 @@ var buildCmd = &cobra.Command{
 			TempFolder:     buildFlags.Workspace,
 			Tags:           buildFlags.BuildTags,
 		}
+		defer builder.Close()
 
-		err := builder.Build(ctx, buildFlags.Output)
+		err := builder.Prepare(ctx)
+		if err != nil {
+			log.Fatal().Err(err).Send()
+		}
+
+		err = builder.Build(ctx, buildFlags.Output)
 		if err != nil {
 			log.Fatal().Err(err).Send()
 		}
