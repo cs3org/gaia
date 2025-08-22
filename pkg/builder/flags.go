@@ -130,7 +130,7 @@ func getRevaVersion(w *workspace, replacements []Replace) string {
 	return m.Version
 }
 
-type GithubTagRef struct {
+type GithubRef struct {
 	Ref    string `json:"ref"`
 	NodeID string `json:"node_id"`
 	URL    string `json:"url"`
@@ -163,15 +163,32 @@ func getGitCommit(version string, replacements []Replace) string {
 		panic(err)
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		panic("status code is not 200")
+	if res.StatusCode == http.StatusOK {
+		var tag GithubRef
+		if err := json.NewDecoder(res.Body).Decode(&tag); err != nil {
+			panic(err)
+		}
+		return tag.Object.Sha[:9]
 	}
 
-	var tag GithubTagRef
-	if err := json.NewDecoder(res.Body).Decode(&tag); err != nil {
+	// Maybe we got a branch...
+	url = "https://api.github.com/repos/cs3org/reva/git/refs/heads/" + version
+	res, err = http.Get(url)
+	if err != nil {
 		panic(err)
 	}
-	return tag.Object.Sha[:9]
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusOK {
+		var tag GithubRef
+		if err := json.NewDecoder(res.Body).Decode(&tag); err != nil {
+			panic(err)
+		}
+		return tag.Object.Sha[:9]
+	}
+
+	// Maybe we got the sha already...
+	// Not worth checking
+	return version
 }
 
 func getBuildDate() time.Time {
