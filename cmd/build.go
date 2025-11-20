@@ -37,6 +37,8 @@ var buildFlags = struct {
 	Vendor         bool
 	OnlyPrepare    bool
 	OnlyBuild      bool
+	LdFlags        string
+	Static         bool
 }{}
 
 // buildCmd represents the build command
@@ -77,6 +79,8 @@ var buildCmd = &cobra.Command{
 			TempFolder:     buildFlags.Workspace,
 			Tags:           buildFlags.BuildTags,
 			Vendor:         buildFlags.Vendor,
+			LdFlags:        buildFlags.LdFlags,
+			Static:         buildFlags.Static,
 		}
 		defer builder.Close()
 
@@ -144,4 +148,6 @@ func init() {
 	buildCmd.Flags().BoolVarP(&buildFlags.Vendor, "vendor", "", false, "uses vendoring to keep all dependencies local")
 	buildCmd.Flags().BoolVarP(&buildFlags.OnlyPrepare, "only-prepare", "", false, "only run the prepare workspace stage (forces --leave-workspace)")
 	buildCmd.Flags().BoolVarP(&buildFlags.OnlyBuild, "only-build", "", false, "only run the build workspace stage (requires --workspace to be set)")
+	buildCmd.Flags().StringVar(&buildFlags.LdFlags, "ldflags", "", "custom ldflags to inject (e.g., \"-extldflags=-static\")")
+	buildCmd.Flags().BoolVar(&buildFlags.Static, "static", false, "build statically linked binary (adds -extldflags=-static to ldflags)")
 }

@@ -47,6 +47,8 @@ type Builder struct {
 	Log            *zerolog.Logger
 	LeaveWorkspace bool
 	Vendor         bool
+	LdFlags        string
+	Static         bool
 	w              *workspace
 }
 
@@ -211,7 +213,31 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 	}
 
 	b.Log.Debug().Interface("flags", bflags).Msg("using the following build flags")
-	args.Add("-ldflags", string(bflags))
+
+	ldflags := string(bflags)
+
+	if b.LdFlags != "" {
+		if ldflags != "" {
+			ldflags += " "
+		}
+		ldflags += b.LdFlags
+		b.Log.Info().Str("ldflags", b.LdFlags).Msg("adding custom ldflags")
+	}
+
+	// Check if -extldflags=-static is already present to avoid duplication
+	if b.Static {
+		if !strings.Contains(ldflags, "-extldflags=-static") {
+			if ldflags != "" {
+				ldflags += " "
+			}
+			ldflags += "-extldflags=-static"
+			b.Log.Info().Msg("adding static linking flags (-extldflags=-static)")
+		} else {
+			b.Log.Info().Msg("static linking flag already present in ldflags, skipping")
+		}
+	}
+
+	args.Add("-ldflags", ldflags)
 
 	if b.Vendor {
 		args.Add("-mod=vendor")
@@ -221,6 +247,7 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 	if err := b.w.runGoBuildCommand(ctx, "main.go", output, args.Format()...); err != nil {
 		return err
 	}
+
 	return nil
 }
 
