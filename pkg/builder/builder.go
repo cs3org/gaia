@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -49,6 +50,7 @@ type Builder struct {
 	Vendor         bool
 	LdFlags        string
 	Static         bool
+	StaticMusl     bool
 	w              *workspace
 }
 
@@ -78,6 +80,20 @@ func (b *Builder) getWorkspace() error {
 	b.w.setEnvKV("GOOS", b.Platform.OS)
 	b.w.setEnvKV("GOARCH", b.Platform.Arch)
 
+	if b.StaticMusl {
+		if err := b.checkMuslGcc(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (b *Builder) checkMuslGcc() error {
+	cmd := exec.Command("sh", "-c", "command -v musl-gcc")
+	if err := cmd.Run(); err != nil {
+		return errors.New("musl-gcc not found. Install with: sudo apt install musl-tools (or equivalent for your distribution)")
+	}
 	return nil
 }
 
@@ -189,6 +205,11 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		return err
 	}
 
+	if b.StaticMusl {
+		b.w.setEnvKV("CC", "musl-gcc")
+		b.Log.Info().Msg("using musl-gcc for static build")
+	}
+
 	args := make(buildArgs)
 	if b.Debug {
 		args.Add("-gcflags", "all=-N -l")
@@ -196,7 +217,25 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		args.Add("-trimpath", "")
 		args.Add("-ldflags", "-w", "-s")
 	}
-	if len(b.Tags) > 0 {
+
+	if b.StaticMusl {
+		tags := make([]string, 0, len(b.Tags)+1)
+		tags = append(tags, b.Tags...)
+		hasSqliteTag := false
+		for _, tag := range tags {
+			if tag == "sqlite_omit_load_extension" {
+				hasSqliteTag = true
+				break
+			}
+		}
+		if !hasSqliteTag {
+			tags = append(tags, "sqlite_omit_load_extension")
+			b.Log.Info().Msg("adding sqlite_omit_load_extension build tag for musl static build")
+		}
+		if len(tags) > 0 {
+			args.Add("-tags", strings.Join(tags, ","))
+		}
+	} else if len(b.Tags) > 0 {
 		args.Add("-tags", strings.Join(b.Tags, ","))
 	}
 
@@ -224,8 +263,17 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		b.Log.Info().Str("ldflags", b.LdFlags).Msg("adding custom ldflags")
 	}
 
-	// Check if -extldflags=-static is already present to avoid duplication
-	if b.Static {
+	if b.StaticMusl {
+		if !strings.Contains(ldflags, "-extldflags") {
+			if ldflags != "" {
+				ldflags += " "
+			}
+			ldflags += "-extldflags '-static'"
+			b.Log.Info().Msg("adding musl static linking flags (-extldflags '-static')")
+		} else {
+			b.Log.Info().Msg("extldflags already present in ldflags, skipping")
+		}
+	} else if b.Static {
 		if !strings.Contains(ldflags, "-extldflags=-static") {
 			if ldflags != "" {
 				ldflags += " "

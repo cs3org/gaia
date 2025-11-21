@@ -39,6 +39,7 @@ var buildFlags = struct {
 	OnlyBuild      bool
 	LdFlags        string
 	Static         bool
+	StaticMusl     bool
 }{}
 
 // buildCmd represents the build command
@@ -51,6 +52,11 @@ var buildCmd = &cobra.Command{
 
 		if buildFlags.OnlyPrepare && buildFlags.OnlyBuild {
 			fmt.Fprintln(os.Stderr, "Error: --only-prepare and --only-build cannot be used together")
+			os.Exit(1)
+		}
+
+		if buildFlags.Static && buildFlags.StaticMusl {
+			fmt.Fprintln(os.Stderr, "Error: --static and --static-musl cannot be used together")
 			os.Exit(1)
 		}
 
@@ -81,6 +87,7 @@ var buildCmd = &cobra.Command{
 			Vendor:         buildFlags.Vendor,
 			LdFlags:        buildFlags.LdFlags,
 			Static:         buildFlags.Static,
+			StaticMusl:     buildFlags.StaticMusl,
 		}
 		defer builder.Close()
 
@@ -150,4 +157,5 @@ func init() {
 	buildCmd.Flags().BoolVarP(&buildFlags.OnlyBuild, "only-build", "", false, "only run the build workspace stage (requires --workspace to be set)")
 	buildCmd.Flags().StringVar(&buildFlags.LdFlags, "ldflags", "", "custom ldflags to inject (e.g., \"-extldflags=-static\")")
 	buildCmd.Flags().BoolVar(&buildFlags.Static, "static", false, "build statically linked binary (adds -extldflags=-static to ldflags)")
+	buildCmd.Flags().BoolVar(&buildFlags.StaticMusl, "static-musl", false, "build fully static binary using musl libc (requires musl-gcc, adds sqlite_omit_load_extension tag)")
 }
