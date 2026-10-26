@@ -96,8 +96,15 @@ func (w workspace) newCommand(ctx context.Context, cmd string, stderr io.Writer,
 }
 
 func (w workspace) runGoCommand(ctx context.Context, args ...string) error {
+	return w.runGoCommandEnv(ctx, nil, args...)
+}
+
+// runGoCommandEnv runs a go command with env on top of the environment of
+// the workspace.
+func (w workspace) runGoCommandEnv(ctx context.Context, env []string, args ...string) error {
 	var buf strings.Builder
 	cmd := w.newGoCommand(ctx, &buf, args...)
+	cmd.Env = append(cmd.Env, env...)
 	w.log.Debug().Str("cmd", cmd.String()).Strs("env", cmd.Env).Send()
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%w: %s", err, strings.TrimSpace(buf.String()))
@@ -157,6 +164,10 @@ func fromEnv(key string) string {
 func (w workspace) CreateFile(name string) (*os.File, error) {
 	path := filepath.Join(w.folder, name)
 	return os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+}
+
+func (w workspace) WriteFile(name string, data []byte) error {
+	return os.WriteFile(filepath.Join(w.folder, name), data, 0644)
 }
 
 func (w workspace) OpenFile(name string) (*os.File, error) {

@@ -1,0 +1,5 @@
+# A brand with a key that reva's pkg/cli/brand does not have.
+
+[program]
+name     = "gaiatest"
+nickname = "gt"

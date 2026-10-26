@@ -31,10 +31,12 @@ var testPlugins = []Plugin{
 
 func TestWriteMain(t *testing.T) {
 	for _, tc := range []struct {
+		name   string
 		binary Binary
+		brand  bool
 		want   string
 	}{
-		{Revad, `package main
+		{"revad", Revad, false, `package main
 
 import (
 	_ "example.com/other"
@@ -46,7 +48,7 @@ func main() {
 	revadcmd.Main()
 }
 `},
-		{Reva, `package main
+		{"reva", Reva, false, `package main
 
 import (
 	_ "example.com/other"
@@ -58,10 +60,30 @@ func main() {
 	revacmd.Main()
 }
 `},
+		{"reva with a brand", Reva, true, `package main
+
+import (
+	_ "embed"
+
+	_ "example.com/other"
+	_ "github.com/cernbox/reva-plugins/cli"
+	revacmd "github.com/cs3org/reva/v3/cmd/reva/app"
+	"github.com/cs3org/reva/v3/pkg/cli/brand"
+)
+
+// embedded is the brand of the program (gaia build --brand).
+//
+//go:embed brand.toml
+var embedded []byte
+
+func main() {
+	revacmd.Main(revacmd.WithBrand(brand.MustParse(embedded)))
+}
+`},
 	} {
-		t.Run(string(tc.binary), func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			var b strings.Builder
-			if err := writeMain(&b, tc.binary, testPlugins); err != nil {
+			if err := writeMain(&b, tc.binary, testPlugins, tc.brand); err != nil {
 				t.Fatal(err)
 			}
 			if b.String() != tc.want {
@@ -73,13 +95,19 @@ func main() {
 
 func TestWriteMainKeepsThePlugins(t *testing.T) {
 	plugins := append([]Plugin(nil), testPlugins...)
-	if err := writeMain(new(strings.Builder), Revad, plugins); err != nil {
+	if err := writeMain(new(strings.Builder), Revad, plugins, false); err != nil {
 		t.Fatal(err)
 	}
 	for i := range plugins {
 		if plugins[i] != testPlugins[i] {
 			t.Errorf("plugin %d changed: %v, was %v", i, plugins[i], testPlugins[i])
 		}
+	}
+}
+
+func TestWriteMainRefusesABrandForRevad(t *testing.T) {
+	if err := writeMain(new(strings.Builder), Revad, nil, true); err == nil {
+		t.Error("no error")
 	}
 }
 

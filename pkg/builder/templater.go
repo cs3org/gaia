@@ -75,9 +75,20 @@ func ParseBinary(s string) (Binary, error) {
 	return "", fmt.Errorf("unknown binary %q: it is revad or reva", s)
 }
 
+const (
+	// brandFile is the brand in the workspace, which main.go embeds.
+	brandFile = "brand.toml"
+	// brandCheckArg makes the reva CLI check its brand and its plugins, and
+	// exit 0 or 1.
+	brandCheckArg = "__brandcheck"
+)
+
 // writeMain writes the main.go of the binary, with a blank import for each
-// plugin.
-func writeMain(w io.Writer, binary Binary, plugins []Plugin) error {
+// plugin. With brand, the reva CLI embeds brandFile and runs with that brand.
+func writeMain(w io.Writer, binary Binary, plugins []Plugin, brand bool) error {
+	if brand && binary != Reva {
+		return fmt.Errorf("a brand is for the reva binary, not %s", binary)
+	}
 	// DeleteFunc clears the end of the slice it changes: work on a copy,
 	// the caller still needs every plugin.
 	plugins = slices.DeleteFunc(slices.Clone(plugins), func(p Plugin) bool { return p.RepositoryPath == revaRepository })
@@ -85,14 +96,19 @@ func writeMain(w io.Writer, binary Binary, plugins []Plugin) error {
 	if binary == Reva {
 		t = revaTemplate
 	}
-	var buf bytes.Buffer
-	if err := t.Execute(&buf, struct {
-		Plugins  []Plugin
-		RevaRepo string
+	data := struct {
+		Plugins   []Plugin
+		RevaRepo  string
+		BrandFile string
 	}{
 		Plugins:  plugins,
 		RevaRepo: revaRepository,
-	}); err != nil {
+	}
+	if brand {
+		data.BrandFile = brandFile
+	}
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, data); err != nil {
 		return err
 	}
 	src, err := format.Source(buf.Bytes())
@@ -170,13 +186,27 @@ func main() {
 var revaTemplate = template.Must(template.New("main.go").Parse(`package main
 
 import (
+{{- if .BrandFile }}
+	_ "embed"
+
+	"{{.RevaRepo}}/pkg/cli/brand"
+{{- end }}
 	revacmd "{{.RevaRepo}}/cmd/reva/app"
 {{- range .Plugins }}
 	_ "{{ .RepositoryPath }}"
 {{- end }}
 )
-
+{{ if .BrandFile }}
+// embedded is the brand of the program (gaia build --brand).
+//
+//go:embed {{ .BrandFile }}
+var embedded []byte
+{{ end }}
 func main() {
+{{- if .BrandFile }}
+	revacmd.Main(revacmd.WithBrand(brand.MustParse(embedded)))
+{{- else }}
 	revacmd.Main()
+{{- end }}
 }
 `))
