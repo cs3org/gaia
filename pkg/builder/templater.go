@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go/format"
+	"io"
 	"os"
 	"os/exec"
 	"slices"
@@ -50,17 +52,55 @@ func (r Replace) String() string {
 	return s
 }
 
-func writeMainWithPlugins(f *os.File, plugins []Plugin) error {
+// Binary is the program that gaia builds.
+type Binary string
+
+const (
+	// Revad is the reva daemon, github.com/cs3org/reva/v3/cmd/revad. It is
+	// the default.
+	Revad Binary = "revad"
+	// Reva is the reva CLI, github.com/cs3org/reva/v3/cmd/reva/app.
+	Reva Binary = "reva"
+)
+
+// ParseBinary returns the binary named s: "revad" or "reva". An empty s is
+// revad.
+func ParseBinary(s string) (Binary, error) {
+	switch b := Binary(s); b {
+	case "":
+		return Revad, nil
+	case Revad, Reva:
+		return b, nil
+	}
+	return "", fmt.Errorf("unknown binary %q: it is revad or reva", s)
+}
+
+// writeMain writes the main.go of the binary, with a blank import for each
+// plugin.
+func writeMain(w io.Writer, binary Binary, plugins []Plugin) error {
 	// DeleteFunc clears the end of the slice it changes: work on a copy,
 	// the caller still needs every plugin.
 	plugins = slices.DeleteFunc(slices.Clone(plugins), func(p Plugin) bool { return p.RepositoryPath == revaRepository })
-	return mainTemplate.Execute(f, struct {
+	t := revadTemplate
+	if binary == Reva {
+		t = revaTemplate
+	}
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, struct {
 		Plugins  []Plugin
 		RevaRepo string
 	}{
 		Plugins:  plugins,
 		RevaRepo: revaRepository,
-	})
+	}); err != nil {
+		return err
+	}
+	src, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("error formatting main.go: %w", err)
+	}
+	_, err = w.Write(src)
+	return err
 }
 
 type GoMod struct {
@@ -113,7 +153,7 @@ func isRevaLocalReplacement(repl []Replace) (string, bool) {
 	return "", false
 }
 
-var mainTemplate = template.Must(template.New("main.go").Parse(`package main
+var revadTemplate = template.Must(template.New("main.go").Parse(`package main
 
 import (
 	revadcmd "{{.RevaRepo}}/cmd/revad"
@@ -124,5 +164,19 @@ import (
 
 func main() {
 	revadcmd.Main()
+}
+`))
+
+var revaTemplate = template.Must(template.New("main.go").Parse(`package main
+
+import (
+	revacmd "{{.RevaRepo}}/cmd/reva/app"
+{{- range .Plugins }}
+	_ "{{ .RepositoryPath }}"
+{{- end }}
+)
+
+func main() {
+	revacmd.Main()
 }
 `))

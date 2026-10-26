@@ -19,6 +19,7 @@
 package builder
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"os"
@@ -39,6 +40,8 @@ type Platform struct {
 
 type Builder struct {
 	Platform
+	// Binary is the program to build. Empty is revad.
+	Binary         Binary
 	RevaVersion    string
 	Tags           []string
 	Plugins        []Plugin
@@ -105,9 +108,14 @@ func (b *Builder) Prepare(ctx context.Context) error {
 		}
 	}
 
-	b.Log.Info().Msgf("preparing reva using version %s", b.RevaVersion)
+	binary, err := ParseBinary(string(b.Binary))
+	if err != nil {
+		return err
+	}
 
-	if err := b.w.runGoCommand(ctx, "mod", "init", "revad"); err != nil {
+	b.Log.Info().Msgf("preparing %s using reva version %s", binary, b.RevaVersion)
+
+	if err := b.w.runGoCommand(ctx, "mod", "init", string(binary)); err != nil {
 		return err
 	}
 	f, err := b.w.CreateFile("main.go")
@@ -116,7 +124,7 @@ func (b *Builder) Prepare(ctx context.Context) error {
 	}
 	defer f.Close()
 
-	if err := writeMainWithPlugins(f, b.Plugins); err != nil {
+	if err := writeMain(f, binary, b.Plugins); err != nil {
 		return err
 	}
 
@@ -298,7 +306,7 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		args.Add("-mod=vendor")
 	}
 
-	b.Log.Info().Msg("building revad binary")
+	b.Log.Info().Msgf("building %s binary", cmp.Or(b.Binary, Revad))
 	if err := b.w.runGoBuildCommand(ctx, "main.go", output, args.Format()...); err != nil {
 		return err
 	}
