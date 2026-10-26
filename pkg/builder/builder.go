@@ -120,6 +120,13 @@ func (b *Builder) Prepare(ctx context.Context) error {
 		return err
 	}
 
+	// a local replacement replaces the module of its directory,
+	// also when the plugin is a package inside the module
+	b.Replacement, err = resolveReplacements(ctx, b.Replacement)
+	if err != nil {
+		return err
+	}
+
 	// if the reva repository has been replaced with a local one
 	// it might have further replacements
 	// if we do not consider them, the compilation will fail
