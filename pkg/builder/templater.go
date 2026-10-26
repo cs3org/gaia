@@ -51,7 +51,9 @@ func (r Replace) String() string {
 }
 
 func writeMainWithPlugins(f *os.File, plugins []Plugin) error {
-	plugins = slices.DeleteFunc(plugins, func(p Plugin) bool { return p.RepositoryPath == revaRepository })
+	// DeleteFunc clears the end of the slice it changes: work on a copy,
+	// the caller still needs every plugin.
+	plugins = slices.DeleteFunc(slices.Clone(plugins), func(p Plugin) bool { return p.RepositoryPath == revaRepository })
 	return mainTemplate.Execute(f, struct {
 		Plugins  []Plugin
 		RevaRepo string
