@@ -1,5 +1,3 @@
-# A test brand of the reva CLI, with the schema of reva's pkg/cli/brand.
-
 [program]
 name  = "gaiatest"
 short = "A test build of the reva CLI"

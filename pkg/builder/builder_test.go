@@ -28,11 +28,8 @@ import (
 	"github.com/cs3org/gaia/internal/utils"
 )
 
-// The build tests compile reva, from a local checkout:
-//
-//	GAIA_TEST_REVA=/path/to/reva go test ./pkg/builder -run Build
-//
-// They are skipped without GAIA_TEST_REVA.
+// The build tests need a reva checkout:
+// GAIA_TEST_REVA=/path/to/reva go test ./pkg/builder -run Build
 func revaCheckout(t *testing.T) string {
 	t.Helper()
 	dir := os.Getenv("GAIA_TEST_REVA")

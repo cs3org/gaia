@@ -25,7 +25,6 @@ import (
 	"testing"
 )
 
-// newModule writes a module example.com/plugins with the package cli/otg.
 func newModule(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()

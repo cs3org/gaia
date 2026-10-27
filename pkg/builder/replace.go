@@ -27,9 +27,8 @@ import (
 	"strings"
 )
 
-// isDirectoryPath tells whether the right side of a replacement is a local
-// directory, with the rule of go mod edit: an absolute path, or a relative
-// one that starts with ./ or ../.
+// isDirectoryPath uses the rule of go mod edit: an absolute path, or a path
+// that starts with ./ or ../.
 func isDirectoryPath(p string) bool {
 	if filepath.IsAbs(p) || p == "." || p == ".." {
 		return true
@@ -42,7 +41,6 @@ func isDirectoryPath(p string) bool {
 	return false
 }
 
-// findModule returns the directory of the go.mod at or above dir.
 func findModule(dir string) (string, error) {
 	for d := dir; ; {
 		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil {
@@ -56,18 +54,11 @@ func findModule(dir string) (string, error) {
 	}
 }
 
-// resolveReplace turns a replacement of a package with a local directory into
-// a replacement of the module that holds the directory. The directory is the
-// root of the module or the directory of the package:
-//
-//	--with github.com/cernbox/reva-plugins/cli=../reva-plugins/cli
-//	--with github.com/cernbox/reva-plugins/cli=../reva-plugins
-//
-// both replace github.com/cernbox/reva-plugins with ../reva-plugins, as an
-// absolute path. A replace for the package path would add a second module
-// that provides the same packages, and the build would fail with "ambiguous
-// import". A replacement with a module (path@version) is returned unchanged:
-// its left side must name the module.
+// resolveReplace turns the replacement of a package with a local directory
+// into a replacement of the module that holds the directory. A replace for
+// the package path would add a second module with the same packages, and the
+// build would fail with "ambiguous import". A replacement with a version is
+// not changed.
 func resolveReplace(ctx context.Context, r Replace) (Replace, error) {
 	if r.ToVersion != "" || !isDirectoryPath(r.To) {
 		return r, nil
@@ -93,7 +84,6 @@ func resolveReplace(ctx context.Context, r Replace) (Replace, error) {
 	if module == "" {
 		return Replace{}, fmt.Errorf("replacement of %s: %s has no module path", r.From, filepath.Join(root, "go.mod"))
 	}
-	// pkg is the package path of dir in its module.
 	pkg := module
 	if rel, err := filepath.Rel(root, dir); err == nil && rel != "." {
 		pkg += "/" + filepath.ToSlash(rel)
@@ -104,8 +94,8 @@ func resolveReplace(ctx context.Context, r Replace) (Replace, error) {
 	return Replace{From: module, To: root}, nil
 }
 
-// resolveReplacements applies resolveReplace to every replacement, and drops
-// the duplicates: two plugins of one local module give one replace.
+// resolveReplacements drops the duplicates: two plugins of one local module
+// give one replace.
 func resolveReplacements(ctx context.Context, rs []Replace) ([]Replace, error) {
 	var out []Replace
 	seen := map[string]Replace{}

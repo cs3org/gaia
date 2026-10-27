@@ -99,8 +99,6 @@ func (w workspace) runGoCommand(ctx context.Context, args ...string) error {
 	return w.runGoCommandEnv(ctx, nil, args...)
 }
 
-// runGoCommandEnv runs a go command with env on top of the environment of
-// the workspace.
 func (w workspace) runGoCommandEnv(ctx context.Context, env []string, args ...string) error {
 	var buf strings.Builder
 	cmd := w.newGoCommand(ctx, &buf, args...)

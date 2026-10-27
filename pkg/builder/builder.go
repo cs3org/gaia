@@ -44,8 +44,7 @@ type Builder struct {
 	Platform
 	// Binary is the program to build. Empty is revad.
 	Binary Binary
-	// Brand is the brand file of a reva build. The workspace embeds a copy
-	// of it, and reva checks it before the build.
+	// Brand is the brand file of a reva build.
 	Brand          string
 	RevaVersion    string
 	Tags           []string
@@ -143,8 +142,7 @@ func (b *Builder) Prepare(ctx context.Context) error {
 		return err
 	}
 
-	// main.go embeds the brand: the workspace has its own copy, also when
-	// the file is in the module cache
+	// main.go embeds the brand, so the workspace needs its own copy.
 	if brand != nil {
 		b.Log.Info().Msgf("using brand %s", b.Brand)
 		if err := b.w.WriteFile(brandFile, brand); err != nil {
@@ -152,8 +150,6 @@ func (b *Builder) Prepare(ctx context.Context) error {
 		}
 	}
 
-	// a local replacement replaces the module of its directory,
-	// also when the plugin is a package inside the module
 	b.Replacement, err = resolveReplacements(ctx, b.Replacement)
 	if err != nil {
 		return err
@@ -306,15 +302,9 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 	args.Add("-ldflags", ldflags)
 
 	b.Log.Info().Msgf("building %s binary", cmp.Or(b.Binary, Revad))
-	if err := b.w.runGoBuildCommand(ctx, "main.go", output, args.Format()...); err != nil {
-		return err
-	}
-
-	return nil
+	return b.w.runGoBuildCommand(ctx, "main.go", output, args.Format()...)
 }
 
-// compileArgs are the arguments of go build and go run, without the ldflags
-// of the version and of the linking.
 func (b *Builder) compileArgs() buildArgs {
 	args := make(buildArgs)
 	if b.Debug {
@@ -327,14 +317,11 @@ func (b *Builder) compileArgs() buildArgs {
 	if b.StaticMusl {
 		tags := make([]string, 0, len(b.Tags)+1)
 		tags = append(tags, b.Tags...)
-		hasSqliteTag := slices.Contains(tags, "sqlite_omit_load_extension")
-		if !hasSqliteTag {
+		if !slices.Contains(tags, "sqlite_omit_load_extension") {
 			tags = append(tags, "sqlite_omit_load_extension")
 			b.Log.Info().Msg("adding sqlite_omit_load_extension build tag for musl static build")
 		}
-		if len(tags) > 0 {
-			args.Add("-tags", strings.Join(tags, ","))
-		}
+		args.Add("-tags", strings.Join(tags, ","))
 	} else if len(b.Tags) > 0 {
 		args.Add("-tags", strings.Join(b.Tags, ","))
 	}
@@ -345,11 +332,9 @@ func (b *Builder) compileArgs() buildArgs {
 	return args
 }
 
-// checkReva runs the reva CLI of the workspace with __brandcheck. reva
-// parses its brand strictly (--brand, or the built-in one), checks it
-// against the plugins of the same build, checks the plugins, and exits 1 on
-// an error. gaia does not know the schema of the brand. The check runs on
-// the host, also when the build is for another platform.
+// checkReva makes the reva CLI check its brand and plugins. gaia does not
+// know the schema of the brand. The check runs on the host, also when the
+// build is for another platform.
 func (b *Builder) checkReva(ctx context.Context) error {
 	b.Log.Info().Msg("checking the brand and the plugins of the build")
 	args := append([]string{"run"}, b.compileArgs().Format()...)

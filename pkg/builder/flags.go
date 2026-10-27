@@ -57,10 +57,9 @@ type buildFlags struct {
 	BuildDate time.Time
 }
 
-// versionVariables are the reva variables that hold the version of a build.
-// reva and revad read them from pkg/rversion. The older revad releases read
-// them from cmd/revad. The linker ignores -X for a variable that the binary
-// does not have, so gaia sets both.
+// Older revad releases read the version from cmd/revad, newer ones and reva
+// from pkg/rversion. The linker ignores -X for a missing variable, so gaia
+// sets both.
 var versionVariables = []struct {
 	pkg                                      string
 	gitCommit, version, goVersion, buildDate string

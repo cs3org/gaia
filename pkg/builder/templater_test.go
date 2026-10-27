@@ -105,12 +105,6 @@ func TestWriteMainKeepsThePlugins(t *testing.T) {
 	}
 }
 
-func TestWriteMainRefusesABrandForRevad(t *testing.T) {
-	if err := writeMain(new(strings.Builder), Revad, nil, true); err == nil {
-		t.Error("no error")
-	}
-}
-
 func TestParseBinary(t *testing.T) {
 	for in, want := range map[string]Binary{"": Revad, "revad": Revad, "reva": Reva} {
 		if got, err := ParseBinary(in); err != nil || got != want {

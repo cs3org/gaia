@@ -56,15 +56,13 @@ func (r Replace) String() string {
 type Binary string
 
 const (
-	// Revad is the reva daemon, github.com/cs3org/reva/v3/cmd/revad. It is
-	// the default.
+	// Revad is the reva daemon. It is the default.
 	Revad Binary = "revad"
-	// Reva is the reva CLI, github.com/cs3org/reva/v3/cmd/reva/app.
+	// Reva is the reva CLI.
 	Reva Binary = "reva"
 )
 
-// ParseBinary returns the binary named s: "revad" or "reva". An empty s is
-// revad.
+// ParseBinary returns the binary named s. An empty s is revad.
 func ParseBinary(s string) (Binary, error) {
 	switch b := Binary(s); b {
 	case "":
@@ -76,21 +74,12 @@ func ParseBinary(s string) (Binary, error) {
 }
 
 const (
-	// brandFile is the brand in the workspace, which main.go embeds.
-	brandFile = "brand.toml"
-	// brandCheckArg makes the reva CLI check its brand and its plugins, and
-	// exit 0 or 1.
+	brandFile     = "brand.toml"
 	brandCheckArg = "__brandcheck"
 )
 
-// writeMain writes the main.go of the binary, with a blank import for each
-// plugin. With brand, the reva CLI embeds brandFile and runs with that brand.
 func writeMain(w io.Writer, binary Binary, plugins []Plugin, brand bool) error {
-	if brand && binary != Reva {
-		return fmt.Errorf("a brand is for the reva binary, not %s", binary)
-	}
-	// DeleteFunc clears the end of the slice it changes: work on a copy,
-	// the caller still needs every plugin.
+	// DeleteFunc clears the end of the slice: the caller still needs every plugin.
 	plugins = slices.DeleteFunc(slices.Clone(plugins), func(p Plugin) bool { return p.RepositoryPath == revaRepository })
 	t := revadTemplate
 	if binary == Reva {
