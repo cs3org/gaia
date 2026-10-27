@@ -57,7 +57,16 @@ type buildFlags struct {
 	BuildDate time.Time
 }
 
-const buildVariablesPkg = revaRepository + "/cmd/revad"
+// Older revad releases read the version from cmd/revad, newer ones and reva
+// from pkg/rversion. The linker ignores -X for a missing variable, so gaia
+// sets both.
+var versionVariables = []struct {
+	pkg                                      string
+	gitCommit, version, goVersion, buildDate string
+}{
+	{revaRepository + "/pkg/rversion", "GitCommit", "Version", "GoVersion", "BuildDate"},
+	{revaRepository + "/cmd/revad", "gitCommit", "version", "goVersion", "buildDate"},
+}
 
 func generateBuildFlag(key, val string) string {
 	return "-X " + key + "=" + val
@@ -65,17 +74,19 @@ func generateBuildFlag(key, val string) string {
 
 func (b buildFlags) Format() string {
 	var params []string
-	if b.GitCommit != "" {
-		params = append(params, generateBuildFlag(buildVariablesPkg+".gitCommit", b.GitCommit))
-	}
-	if b.Version != "" {
-		params = append(params, generateBuildFlag(buildVariablesPkg+".version", b.Version))
-	}
-	if b.GoVersion != "" {
-		params = append(params, generateBuildFlag(buildVariablesPkg+".goVersion", b.GoVersion))
-	}
-	if b.BuildDate.Unix() != 0 {
-		params = append(params, generateBuildFlag(buildVariablesPkg+".buildDate", b.BuildDate.Format(time.RFC3339)))
+	for _, v := range versionVariables {
+		if b.GitCommit != "" {
+			params = append(params, generateBuildFlag(v.pkg+"."+v.gitCommit, b.GitCommit))
+		}
+		if b.Version != "" {
+			params = append(params, generateBuildFlag(v.pkg+"."+v.version, b.Version))
+		}
+		if b.GoVersion != "" {
+			params = append(params, generateBuildFlag(v.pkg+"."+v.goVersion, b.GoVersion))
+		}
+		if !b.BuildDate.IsZero() {
+			params = append(params, generateBuildFlag(v.pkg+"."+v.buildDate, b.BuildDate.Format(time.RFC3339)))
+		}
 	}
 	return strings.Join(params, " ")
 }

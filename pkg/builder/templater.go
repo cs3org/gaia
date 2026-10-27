@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go/format"
+	"io"
 	"os"
 	"os/exec"
 	"slices"
@@ -50,15 +52,60 @@ func (r Replace) String() string {
 	return s
 }
 
-func writeMainWithPlugins(f *os.File, plugins []Plugin) error {
-	plugins = slices.DeleteFunc(plugins, func(p Plugin) bool { return p.RepositoryPath == revaRepository })
-	return mainTemplate.Execute(f, struct {
-		Plugins  []Plugin
-		RevaRepo string
+// Binary is the program that gaia builds.
+type Binary string
+
+const (
+	// Revad is the reva daemon. It is the default.
+	Revad Binary = "revad"
+	// Reva is the reva CLI.
+	Reva Binary = "reva"
+)
+
+// ParseBinary returns the binary named s. An empty s is revad.
+func ParseBinary(s string) (Binary, error) {
+	switch b := Binary(s); b {
+	case "":
+		return Revad, nil
+	case Revad, Reva:
+		return b, nil
+	}
+	return "", fmt.Errorf("unknown binary %q: it is revad or reva", s)
+}
+
+const (
+	brandFile     = "brand.toml"
+	brandCheckArg = "__brandcheck"
+)
+
+func writeMain(w io.Writer, binary Binary, plugins []Plugin, brand bool) error {
+	// DeleteFunc clears the end of the slice: the caller still needs every plugin.
+	plugins = slices.DeleteFunc(slices.Clone(plugins), func(p Plugin) bool { return p.RepositoryPath == revaRepository })
+	t := revadTemplate
+	if binary == Reva {
+		t = revaTemplate
+	}
+	data := struct {
+		Plugins   []Plugin
+		RevaRepo  string
+		BrandFile string
 	}{
 		Plugins:  plugins,
 		RevaRepo: revaRepository,
-	})
+	}
+	if brand {
+		data.BrandFile = brandFile
+	}
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, data); err != nil {
+		return err
+	}
+	src, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("error formatting main.go: %w", err)
+	}
+	_, err = w.Write(src)
+	return err
 }
 
 type GoMod struct {
@@ -111,7 +158,7 @@ func isRevaLocalReplacement(repl []Replace) (string, bool) {
 	return "", false
 }
 
-var mainTemplate = template.Must(template.New("main.go").Parse(`package main
+var revadTemplate = template.Must(template.New("main.go").Parse(`package main
 
 import (
 	revadcmd "{{.RevaRepo}}/cmd/revad"
@@ -122,5 +169,33 @@ import (
 
 func main() {
 	revadcmd.Main()
+}
+`))
+
+var revaTemplate = template.Must(template.New("main.go").Parse(`package main
+
+import (
+{{- if .BrandFile }}
+	_ "embed"
+
+	"{{.RevaRepo}}/pkg/cli/brand"
+{{- end }}
+	revacmd "{{.RevaRepo}}/cmd/reva/app"
+{{- range .Plugins }}
+	_ "{{ .RepositoryPath }}"
+{{- end }}
+)
+{{ if .BrandFile }}
+// embedded is the brand of the program (gaia build --brand).
+//
+//go:embed {{ .BrandFile }}
+var embedded []byte
+{{ end }}
+func main() {
+{{- if .BrandFile }}
+	revacmd.Main(revacmd.WithBrand(brand.MustParse(embedded)))
+{{- else }}
+	revacmd.Main()
+{{- end }}
 }
 `))

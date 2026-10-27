@@ -28,6 +28,8 @@ import (
 )
 
 var buildFlags = struct {
+	Binary         string
+	Brand          string
 	With           []string
 	Output         string
 	Debug          bool
@@ -69,6 +71,24 @@ var buildCmd = &cobra.Command{
 			os.Exit(2)
 		}
 
+		binary, err := builder.ParseBinary(buildFlags.Binary)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			os.Exit(1)
+		}
+		if buildFlags.Brand != "" && binary != builder.Reva {
+			fmt.Fprintln(os.Stderr, "Error: --brand needs --binary reva")
+			os.Exit(1)
+		}
+		if buildFlags.Brand != "" && buildFlags.OnlyBuild {
+			fmt.Fprintln(os.Stderr, "Error: --brand is for the prepare stage: --only-build uses the brand of the workspace")
+			os.Exit(1)
+		}
+		output := buildFlags.Output
+		if output == "" {
+			output = "./" + string(binary)
+		}
+
 		version := "latest"
 		if len(args) != 0 {
 			version = args[0]
@@ -76,6 +96,8 @@ var buildCmd = &cobra.Command{
 
 		plugins, replacement := parsePluginReplacement(buildFlags.With)
 		builder := builder.Builder{
+			Binary:         binary,
+			Brand:          buildFlags.Brand,
 			RevaVersion:    version,
 			Plugins:        plugins,
 			Replacement:    replacement,
@@ -99,7 +121,7 @@ var buildCmd = &cobra.Command{
 		}
 
 		if !buildFlags.OnlyPrepare {
-			err := builder.Build(ctx, buildFlags.Output)
+			err := builder.Build(ctx, output)
 			if err != nil {
 				log.Fatal().Err(err).Send()
 			}
@@ -147,7 +169,9 @@ func init() {
 	rootCmd.AddCommand(buildCmd)
 
 	buildCmd.Flags().StringSliceVar(&buildFlags.With, "with", nil, "plugins to include in the build")
-	buildCmd.Flags().StringVarP(&buildFlags.Output, "output", "o", "./revad", "output file")
+	buildCmd.Flags().StringVar(&buildFlags.Binary, "binary", string(builder.Revad), "program to build: revad (the daemon) or reva (the CLI)")
+	buildCmd.Flags().StringVar(&buildFlags.Brand, "brand", "", "brand file (TOML) that the reva binary embeds; reva checks it before the build")
+	buildCmd.Flags().StringVarP(&buildFlags.Output, "output", "o", "", "output file (default ./revad or ./reva, after --binary)")
 	buildCmd.Flags().BoolVarP(&buildFlags.Debug, "debug", "d", false, "compile with debug symbols")
 	buildCmd.Flags().BoolVarP(&buildFlags.LeaveWorkspace, "leave-workspace", "l", false, "leave temporary build work space after execution")
 	buildCmd.Flags().StringVarP(&buildFlags.Workspace, "workspace", "w", "", "path where to create the build files, leave empty for temp folder")

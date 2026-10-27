@@ -19,11 +19,14 @@
 package builder
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/cs3org/gaia/internal/utils"
@@ -39,6 +42,10 @@ type Platform struct {
 
 type Builder struct {
 	Platform
+	// Binary is the program to build. Empty is revad.
+	Binary Binary
+	// Brand is the brand file of a reva build.
+	Brand          string
 	RevaVersion    string
 	Tags           []string
 	Plugins        []Plugin
@@ -105,9 +112,24 @@ func (b *Builder) Prepare(ctx context.Context) error {
 		}
 	}
 
-	b.Log.Info().Msgf("preparing reva using version %s", b.RevaVersion)
+	binary, err := ParseBinary(string(b.Binary))
+	if err != nil {
+		return err
+	}
 
-	if err := b.w.runGoCommand(ctx, "mod", "init", "revad"); err != nil {
+	var brand []byte
+	if b.Brand != "" {
+		if binary != Reva {
+			return fmt.Errorf("a brand is for the reva binary, not %s", binary)
+		}
+		if brand, err = os.ReadFile(b.Brand); err != nil {
+			return fmt.Errorf("error reading the brand: %w", err)
+		}
+	}
+
+	b.Log.Info().Msgf("preparing %s using reva version %s", binary, b.RevaVersion)
+
+	if err := b.w.runGoCommand(ctx, "mod", "init", string(binary)); err != nil {
 		return err
 	}
 	f, err := b.w.CreateFile("main.go")
@@ -116,7 +138,20 @@ func (b *Builder) Prepare(ctx context.Context) error {
 	}
 	defer f.Close()
 
-	if err := writeMainWithPlugins(f, b.Plugins); err != nil {
+	if err := writeMain(f, binary, b.Plugins, brand != nil); err != nil {
+		return err
+	}
+
+	// main.go embeds the brand, so the workspace needs its own copy.
+	if brand != nil {
+		b.Log.Info().Msgf("using brand %s", b.Brand)
+		if err := b.w.WriteFile(brandFile, brand); err != nil {
+			return err
+		}
+	}
+
+	b.Replacement, err = resolveReplacements(ctx, b.Replacement)
+	if err != nil {
 		return err
 	}
 
@@ -169,6 +204,12 @@ func (b *Builder) Prepare(ctx context.Context) error {
 		}
 	}
 
+	if binary == Reva {
+		if err := b.checkReva(ctx); err != nil {
+			return err
+		}
+	}
+
 	// add compile time flags for version, commit, go version and build date
 	// store them in the project so that it can be used independently
 	bflags := b.w.generateBuildFlags(b.Replacement)
@@ -210,34 +251,7 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 		b.Log.Info().Msg("using musl-gcc for static build")
 	}
 
-	args := make(buildArgs)
-	if b.Debug {
-		args.Add("-gcflags", "all=-N -l")
-	} else {
-		args.Add("-trimpath", "")
-		args.Add("-ldflags", "-w", "-s")
-	}
-
-	if b.StaticMusl {
-		tags := make([]string, 0, len(b.Tags)+1)
-		tags = append(tags, b.Tags...)
-		hasSqliteTag := false
-		for _, tag := range tags {
-			if tag == "sqlite_omit_load_extension" {
-				hasSqliteTag = true
-				break
-			}
-		}
-		if !hasSqliteTag {
-			tags = append(tags, "sqlite_omit_load_extension")
-			b.Log.Info().Msg("adding sqlite_omit_load_extension build tag for musl static build")
-		}
-		if len(tags) > 0 {
-			args.Add("-tags", strings.Join(tags, ","))
-		}
-	} else if len(b.Tags) > 0 {
-		args.Add("-tags", strings.Join(b.Tags, ","))
-	}
+	args := b.compileArgs()
 
 	// add compile time flags for version, commit, go version and build date
 	f, err := b.w.OpenFile("bflags")
@@ -287,15 +301,48 @@ func (b *Builder) Build(ctx context.Context, output string) error {
 
 	args.Add("-ldflags", ldflags)
 
+	b.Log.Info().Msgf("building %s binary", cmp.Or(b.Binary, Revad))
+	return b.w.runGoBuildCommand(ctx, "main.go", output, args.Format()...)
+}
+
+func (b *Builder) compileArgs() buildArgs {
+	args := make(buildArgs)
+	if b.Debug {
+		args.Add("-gcflags", "all=-N -l")
+	} else {
+		args.Add("-trimpath", "")
+		args.Add("-ldflags", "-w", "-s")
+	}
+
+	if b.StaticMusl {
+		tags := make([]string, 0, len(b.Tags)+1)
+		tags = append(tags, b.Tags...)
+		if !slices.Contains(tags, "sqlite_omit_load_extension") {
+			tags = append(tags, "sqlite_omit_load_extension")
+			b.Log.Info().Msg("adding sqlite_omit_load_extension build tag for musl static build")
+		}
+		args.Add("-tags", strings.Join(tags, ","))
+	} else if len(b.Tags) > 0 {
+		args.Add("-tags", strings.Join(b.Tags, ","))
+	}
+
 	if b.Vendor {
 		args.Add("-mod=vendor")
 	}
+	return args
+}
 
-	b.Log.Info().Msg("building revad binary")
-	if err := b.w.runGoBuildCommand(ctx, "main.go", output, args.Format()...); err != nil {
-		return err
+// checkReva makes the reva CLI check its brand and plugins. gaia does not
+// know the schema of the brand. The check runs on the host, also when the
+// build is for another platform.
+func (b *Builder) checkReva(ctx context.Context) error {
+	b.Log.Info().Msg("checking the brand and the plugins of the build")
+	args := append([]string{"run"}, b.compileArgs().Format()...)
+	args = append(args, ".", brandCheckArg)
+	host := []string{"GOOS=" + utils.KeyFromGoEnv("GOHOSTOS"), "GOARCH=" + utils.KeyFromGoEnv("GOHOSTARCH")}
+	if err := b.w.runGoCommandEnv(ctx, host, args...); err != nil {
+		return fmt.Errorf("error checking the reva build (go run . %s): %w", brandCheckArg, err)
 	}
-
 	return nil
 }
 
